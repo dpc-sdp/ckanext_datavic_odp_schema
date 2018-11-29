@@ -1,0 +1,24 @@
+{% ckan_extends %}
+
+{% block package_basic_fields_title %}
+  {{ super() }}
+{% endblock %}
+
+{% block package_basic_fields_license %}
+  {{ super() }}
+  {% for field_id, field_attributes in h.dataset_extra_fields %}
+    {% if field_attributes['field_group'] == 'licence' %}
+      {{ form.input(field_id,
+        label=_(field_attributes['label']), id='field-' + field_id,
+        placeholder=_(field_attributes['label']),
+        value=data.get(field_id),
+        error=errors.get(field_id),
+        classes=['control-medium'],
+        is_required=field_attributes['required']|default(false))
+      }}
+        {% if field_attributes['description'] %}
+            <small>{{ field_attributes['description'] }}</small>
+        {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endblock %}
