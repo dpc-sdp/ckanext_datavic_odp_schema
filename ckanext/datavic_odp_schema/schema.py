@@ -14,7 +14,7 @@ RESOURCE_EXTRA_FIELDS = [
 DATASET_EXTRA_FIELDS = [
     # License
     ('custom_licence_text', {'label': 'License - other', 'field_group': 'licence'}),
-    ('custom_licence_link', {'label': 'Custom license link', 'field_group': 'licence'}),
+    #('custom_licence_link', {'label': 'Custom license link', 'field_group': 'licence'}),
     ('date_created_data_asset', {'label': 'Created (Data Asset)', 'field_type': 'date', 'required': True}),
 ]
 
