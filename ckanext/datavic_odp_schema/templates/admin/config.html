@@ -1,0 +1,11 @@
+{% ckan_extends %}
+
+{% block admin_form %}
+    {{ super() }}
+    {{ form.textarea(
+        'ckan.datavic.authorised_resource_formats',
+        id='field-ckan.datavic.authorised_resource_formats',
+        label=_('Additional Resource Formats'),
+        value=data['ckan.datavic.authorised_resource_formats'],
+        error=errors['ckan.datavic.authorised_resource_formats']) }}
+{% endblock %}
