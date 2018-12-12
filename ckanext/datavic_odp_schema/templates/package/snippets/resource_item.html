@@ -26,7 +26,7 @@
             {% if res.format in ['api/tool','api','tool','link']  %}
                 <a class="format" style="width: 60px">{{ res.format|default('LINK', true) }}</a>
             {% else %}
-                <a class="format">{{ res.format|default('LINK', true) }}<span class='only-for-screen'> format</span></a>
+                <a class="format">{{ res.format|default('LINK', true) }}<span class='sr-only'> format</span></a>
             {% endif %}
         {% endif %}
 
