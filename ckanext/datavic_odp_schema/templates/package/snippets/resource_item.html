@@ -71,18 +71,21 @@
 
             {% endif %}
             <li tabindex=0 onkeydown='checkboxKey(event)'>
-                <a class='resource-download' href='{{ res.url }}' onclick='return checkTerms(event)'>
-                    {% if res.public_order_url %}
+                {% if res.public_order_url %}
+                    <a class='resource-download' href='{{ res.url }}' onclick='return checkTerms(event)'>
                         {{ _('Order Resource') }}
-                    {% else %}
+                        <i class="icon-arrow-down"></i>
+                    </a>
+                    <form class="drop">
+                        <label class="custom-label"><input title="checkbox" type="checkbox" class="jcf-hidden" style="position: absolute; left: -9999px;" ><span class="custom-check" onclick='checkboxClick(event)'></span></label>
+                        <p>Please check this box to confirm you accept and agree to comply with our <a class="terms-link" href="/terms-of-use" target="_blank">Terms of Use and Copyright and Attribution</a> requirements including any attribution specified on this page. You must comply with the relevant Licence requirements for each dataset.</p>
+                    </form>
+                {% else %}
+                    <a class='resource-download' href='{{ res.url }}'>
                         {{ _('Download') }}
-                    {% endif %}
-                    <i class="icon-arrow-down"></i>
-                </a>
-                <form class="drop">
-                    <label class="custom-label"><input title="checkbox" type="checkbox" class="jcf-hidden" style="position: absolute; left: -9999px;" ><span class="custom-check" onclick='checkboxClick(event)'></span></label>
-                    <p>Please check this box to confirm you accept and agree to comply with our <a class="terms-link" href="/terms-of-use" target="_blank">Terms of Use and Copyright and Attribution</a> requirements including any attribution specified on this page. You must comply with the relevant Licence requirements for each dataset.</p>
-                </form>
+                        <i class="icon-arrow-down"></i>
+                    </a>
+                {% endif %}
             </li>
             {% endif %}
 
