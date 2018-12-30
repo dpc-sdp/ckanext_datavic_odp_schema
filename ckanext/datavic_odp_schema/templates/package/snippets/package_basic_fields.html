@@ -39,7 +39,7 @@
   </div>
 </div>
   {% for field_id, field_attributes in h.dataset_extra_fields %}
-    {% if field_attributes['field_group'] == 'licence' %}
+    {% if field_attributes['hidden'] != True and field_attributes['field_group'] == 'licence' %}
       {{ form.input(field_id,
         label=_(field_attributes['label']), id='field-' + field_id,
         placeholder=_(field_attributes['label']),

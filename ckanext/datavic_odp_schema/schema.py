@@ -13,8 +13,11 @@ RESOURCE_EXTRA_FIELDS = [
 # Format (tuple): ( 'field_id', { 'field_attribute': 'value' } )
 DATASET_EXTRA_FIELDS = [
     # License
+    # The `custom_licence_link` field is not required in the public schema, but is added here to overcome
+    # an issue with the Data.Vic harvester where the first custom schema field is not correctly saved to the
+    # dataset during the harvesting process
+    ('custom_licence_link', {'label': 'Custom license link', 'field_group': 'licence', 'hidden': True}),
     ('custom_licence_text', {'label': 'License - other', 'field_group': 'licence'}),
-    #('custom_licence_link', {'label': 'Custom license link', 'field_group': 'licence'}),
     ('date_created_data_asset', {'label': 'Created (Data Asset)', 'field_type': 'date', 'required': True}),
 ]
 
