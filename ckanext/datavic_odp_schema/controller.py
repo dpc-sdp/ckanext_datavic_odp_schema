@@ -7,6 +7,11 @@ import ckan.lib as lib
 import ckan.logic as logic
 import ckan.model as model
 
+from ckanext.datavic_odp_theme import helpers
+
+from ckan.controllers.api import ApiController
+
+
 render = base.render
 NotFound = logic.NotFound
 NotAuthorized = logic.NotAuthorized
@@ -48,3 +53,8 @@ class HistoricalController(PackageController):
             abort(404, msg)
 
         assert False, "We should never get here"
+
+class FormatController(PackageController):
+
+    def formats(self):
+        return ApiController()._finish_ok(helpers.format_list())
