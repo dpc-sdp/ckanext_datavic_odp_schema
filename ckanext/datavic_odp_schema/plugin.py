@@ -105,7 +105,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
             # print parser.parse(resource.get('period_start')).strftime("%Y-%M-%d") + " " + resource.get('period_start')
             sorted_resource_list[key] = resource
 
-        list = sorted(sorted_resource_list.values(), key=lambda item: str(item.get('key')), reverse=True)
+        list = sorted(sorted_resource_list.values(), key=lambda item: int(item.get('key')), reverse=True)
         # for item in list:
         #    print item.get('period_start') + " " + str(item.get('key'))
         return list
