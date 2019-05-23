@@ -100,7 +100,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
                     'period_start') != '':
                 key = parse_date(resource.get('period_start')[:10]) or 'zzz' + str(i)
             else:
-                key = 'zzz' + str(i)
+                key = '9999999999' + str(i)
             resource['key'] = key
             # print parser.parse(resource.get('period_start')).strftime("%Y-%M-%d") + " " + resource.get('period_start')
             sorted_resource_list[key] = resource
