@@ -5,6 +5,7 @@ import logging
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 
+from datetime import datetime
 from ckanext.datavic_odp_schema import schema as custom_schema
 #from ckanext.datavic_odp_schema import historical
 
@@ -18,6 +19,7 @@ def parse_date(date_str):
         return calendar.timegm(time.strptime(date_str, "%Y-%m-%d"))
     except Exception, e:
         return None
+
 
 class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
     plugins.implements(plugins.ITemplateHelpers)
@@ -112,7 +114,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         #    print item.get('period_start') + " " + str(item.get('key'))
         return list
 
-    def historical_resources_range(resource_list):
+    def historical_resources_range(self, resource_list):
         range_from = ""
         from_ts = None
         range_to = ""
@@ -124,13 +126,17 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
                 ts = parse_date(resource.get('period_start')[:10])
                 if ts and (from_ts is None or ts < from_ts):
                     from_ts = ts
-                    range_from = resource.get('period_start')[:10]
             if resource.get('period_end') is not None and resource.get('period_end') != 'None' and resource.get(
                     'period_end') != '':
                 ts = parse_date(resource.get('period_end')[:10])
                 if ts and (to_ts is None or ts > to_ts):
                     to_ts = ts
-                    range_to = resource.get('period_end')[:10]
+
+        if from_ts:
+            range_from = datetime.fromtimestamp(from_ts).strftime("%m/%d/%Y")
+
+        if to_ts:
+            range_to = datetime.fromtimestamp(to_ts).strftime("%m/%d/%Y")
 
         if range_from != "" and range_to != "":
             return range_from + " to " + range_to
