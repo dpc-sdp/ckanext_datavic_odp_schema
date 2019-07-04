@@ -112,7 +112,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         #    print item.get('period_start') + " " + str(item.get('key'))
         return list
 
-    def historical_resources_range(resource_list):
+    def historical_resources_range(self, resource_list):
         range_from = ""
         from_ts = None
         range_to = ""
