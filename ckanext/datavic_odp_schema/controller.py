@@ -58,3 +58,85 @@ class FormatController(PackageController):
 
     def formats(self):
         return ApiController()._finish_ok(helpers.format_list())
+
+
+class DateMigrateController(base.BaseController):
+
+    def date_migrate(self):
+
+        # postgresql: // ckan_default:ckan_default @ localhost / ckan_default
+
+        # Use CKAN API
+        from ckanapi import RemoteCKAN, LocalCKAN, ValidationError
+
+        old_prod = RemoteCKAN('http://13.211.80.162/data/', apikey='2c4434a4-2f02-4efa-91af-e361ae55059c')
+
+        id = 'fff14b41-4492-46e1-a2a9-e49177620d0a'
+
+        # Fetch x# packages from Old IAR Prod - with info
+        packages = old_prod.call_action('package_search', {'q': 'id:'+ id})
+
+        # Loop through retrieved packages
+        if packages['results']:
+            from pprint import pprint
+            for package in packages['results']:
+                #pprint(package)
+                print(package['id'])
+                print(package['name'])
+                print(package['metadata_created'])
+                print(package['metadata_modified'])
+
+                print("UPDATED package SET metadata_created = '%s' WHERE id = '%s'" % (package['metadata_created'], id))
+
+        return 'done'
+
+        # output the dataset id, name and created & modified dates
+
+
+
+
+        output = ''
+
+        import psycopg2
+        try:
+            connection = psycopg2.connect(user="ckan_default",
+                                          password="ckan_default",
+                                          host="localhost",
+                                          port="5432",
+                                          database="ckan_default")
+            cursor = connection.cursor()
+            # Print PostgreSQL Connection properties
+            # print (connection.get_dsn_parameters(), "\n")
+            # Print PostgreSQL version
+            cursor.execute("SELECT version();")
+            record = cursor.fetchone()
+            print("You are connected to - ", record, "\n")
+
+            print("Table Before updating record ")
+            sql_select_query = """select * from package where id = %s"""
+            cursor.execute(sql_select_query, ('1475a46c-6d2f-4058-9829-705afbfcbdfd', ))
+            record = cursor.fetchone()
+            print(record)
+            # Update single record now
+            sql_update_query = """Update package set metadata_created = %s, metadata_modified = %s where id = %s"""
+            cursor.execute(sql_update_query, ('2018-05-02', '2018-06-03', '1475a46c-6d2f-4058-9829-705afbfcbdfd'))
+            connection.commit()
+            count = cursor.rowcount
+            print(count, "Record Updated successfully ")
+            print("Table After updating record ")
+            sql_select_query = """select * from package where id = %s"""
+            cursor.execute(sql_select_query, ('1475a46c-6d2f-4058-9829-705afbfcbdfd', ))
+            record = cursor.fetchone()
+            print(record)
+
+        except (Exception, psycopg2.Error) as error:
+            print ("Error while connecting to PostgreSQL", error)
+        finally:
+            # closing database connection.
+            if (connection):
+                cursor.close()
+                connection.close()
+                print("PostgreSQL connection is closed")
+
+
+        return 'complete'
