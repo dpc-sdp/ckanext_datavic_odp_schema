@@ -133,10 +133,10 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
                     to_ts = ts
 
         if from_ts:
-            range_from = datetime.fromtimestamp(from_ts).strftime("%m/%d/%Y")
+            range_from = datetime.fromtimestamp(from_ts).strftime("%d/%m/%Y")
 
         if to_ts:
-            range_to = datetime.fromtimestamp(to_ts).strftime("%m/%d/%Y")
+            range_to = datetime.fromtimestamp(to_ts).strftime("%d/%m/%Y")
 
         if range_from != "" and range_to != "":
             return range_from + " to " + range_to
