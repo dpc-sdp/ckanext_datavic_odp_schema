@@ -19,6 +19,7 @@ DATASET_EXTRA_FIELDS = [
     ('custom_licence_link', {'label': 'Custom license link', 'field_group': 'licence', 'hidden': True}),
     ('custom_licence_text', {'label': 'License - other', 'field_group': 'licence'}),
     ('date_created_data_asset', {'label': 'Created (Data Asset)', 'field_type': 'date', 'required': True}),
+    ('full_metadata_url', {'label': 'Full Metadata URL'}),
 ]
 
 
