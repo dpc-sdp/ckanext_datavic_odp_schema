@@ -82,6 +82,9 @@ setup(
         [ckan.plugins]
         datavic_odp_schema=ckanext.datavic_odp_schema.plugin:DatavicODPSchema
 
+        [paste.paster_command]
+        migrate_full_metadata_urls = ckanext.datavic_odp_schema.commands:MigrateFullMetadataUrl
+
         [babel.extractors]
         ckan = ckan.lib.extract:extract_ckan
     ''',
