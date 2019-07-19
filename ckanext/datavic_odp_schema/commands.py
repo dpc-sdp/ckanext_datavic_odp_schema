@@ -138,6 +138,9 @@ class MigrateFullMetadataUrl(CkanCommand):
 
         if self.errors:
             pprint(self.errors)
-            self.separator()
+        else:
+            print('No Errors')
+
+        self.separator()
 
         return 'FINISHED.'
