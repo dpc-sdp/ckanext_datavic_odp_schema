@@ -1,8 +1,9 @@
+import ckan.logic as logic
 import ckan.model as model
 import ckan.plugins.toolkit as toolkit
 from ckan.lib.cli import CkanCommand
-from ckanapi import RemoteCKAN
-import ckan.logic as logic
+from ckanapi import CKANAPIError, RemoteCKAN
+from pprint import pprint
 
 ValidationError = logic.ValidationError
 NotFound = logic.NotFound
@@ -13,6 +14,8 @@ class MigrateFullMetadataUrl(CkanCommand):
     """
 
     summary = __doc__.split('\n')[0]
+
+    errors = []
 
     def __init__(self, name):
         super(MigrateFullMetadataUrl, self).__init__(name)
@@ -36,6 +39,8 @@ class MigrateFullMetadataUrl(CkanCommand):
             })
         except NotFound:
             print('- Local package name %s not found.' % package_name)
+        except ValueError, e:
+            self.errors.append(str(e))
         return local_package
 
     def fetch_remote_package(self, source_url, api_key, package_name):
@@ -45,6 +50,8 @@ class MigrateFullMetadataUrl(CkanCommand):
             remote_package = source.action.package_show(id=package_name)
         except NotFound:
             print('- No remote package found for package ID %s.' % package_name)
+        except CKANAPIError, e:
+            self.errors.append(str(e))
         return remote_package
 
     def get_package_names(self, limit, offset):
@@ -66,8 +73,6 @@ class MigrateFullMetadataUrl(CkanCommand):
         :return:
         """
         self._load_config()
-
-        from pprint import pprint
 
         context = {'session': model.Session}
 
@@ -130,5 +135,9 @@ class MigrateFullMetadataUrl(CkanCommand):
         self.separator()
         print('Number of packages updated: %s' % num_packages_updated)
         self.separator()
+
+        if self.errors:
+            pprint(self.errors)
+            self.separator()
 
         return 'FINISHED.'
