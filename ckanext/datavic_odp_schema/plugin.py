@@ -102,7 +102,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
             i += 1
             if resource.get('period_start') is not None and resource.get('period_start') != 'None' and resource.get(
                     'period_start') != '':
-                key = parse_date(resource.get('period_start')[:10]) or 'zzz' + str(i)
+                key = parse_date(resource.get('period_start')[:10]) or '9999999999' + str(i)
             else:
                 key = '9999999999' + str(i)
             resource['key'] = key
