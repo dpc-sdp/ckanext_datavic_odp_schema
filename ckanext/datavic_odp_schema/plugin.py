@@ -4,10 +4,9 @@ import logging
 
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
+import re
 
-from datetime import datetime
 from ckanext.datavic_odp_schema import schema as custom_schema
-#from ckanext.datavic_odp_schema import historical
 
 _t = toolkit._
 
@@ -126,17 +125,20 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
                 ts = parse_date(resource.get('period_start')[:10])
                 if ts and (from_ts is None or ts < from_ts):
                     from_ts = ts
+                    range_from = resource.get('period_start')[:10]
             if resource.get('period_end') is not None and resource.get('period_end') != 'None' and resource.get(
                     'period_end') != '':
                 ts = parse_date(resource.get('period_end')[:10])
                 if ts and (to_ts is None or ts > to_ts):
                     to_ts = ts
+                    range_to = resource.get('period_end')[:10]
 
-        if from_ts:
-            range_from = datetime.fromtimestamp(from_ts).strftime("%d/%m/%Y")
+        pattern = '^(\d{4})-(\d{2})-(\d{2})$'
 
-        if to_ts:
-            range_to = datetime.fromtimestamp(to_ts).strftime("%d/%m/%Y")
+        if range_from and re.match(pattern, range_from):
+            range_from = re.sub(pattern, r'\3/\2/\1', range_from)
+        if range_to and re.match(pattern, range_to):
+            range_to = re.sub(pattern, r'\3/\2/\1', range_to)
 
         if range_from != "" and range_to != "":
             return range_from + " to " + range_to
