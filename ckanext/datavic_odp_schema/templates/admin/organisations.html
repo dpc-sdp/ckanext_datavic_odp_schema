@@ -2,6 +2,9 @@
 
 {% block primary_content_inner %}
 
+    {% set url = h.url_for('ckanadmin_organisations') %}
+    {% set data = data if data else [] %}
+
     {% if log %}
 
         {% if data %}
@@ -14,14 +17,14 @@
             </p>
             <p><a href="{{ h.url_for('/organization') }}">View Organisation structure</a></p>
             <hr />
-            <p><a class="btn" href="/ckan-admin/organisations">Back</a></p>
+            <p><a class="btn" href="{{ url }}">&lt; {{ _('Back') }}</a></p>
         {% endif %}
 
         <h3>Log:</h3>
         <div class="well">
             <pre>{{ log }}</pre>
         </div>
-        <p><a class="btn" href="/ckan-admin/organisations">Back</a></p>
+        <p><a class="btn" href="{{ url }}">&lt; {{ _('Back') }}</a></p>
 
     {% else %}
 
@@ -29,7 +32,11 @@
 
         <h2>Reconcile Organisations</h2>
 
-        <p><span class="label label-warning">Warning!</span> Filling in this form and clicking the <strong>Reconcile</strong> button below will adjust the organisation hierarchy on this site based on the hierarchy from the source IAR URL.</p>
+        <p>
+            <span class="label label-warning">Warning!</span>
+            Filling in this form and clicking the <strong>Reconcile</strong> button below will adjust the
+            organisation hierarchy on this site based on the hierarchy from the source IAR URL.
+        </p>
 
         <h3>IAR Settings</h3>
 
@@ -43,11 +50,11 @@
         </div>
         {% endif %}
 
-        <form action="/ckan-admin/organisations" method="post" class="form-inline">
+        <form action="{{ url }}" method="post" class="form-horizontal">
 
-            {{ form.input('iar_url', label=_('IAR URL'), value=(data['iar_url'] if data['iar_url'] else '')) }}
+            {{ form.input('iar_url', label=_('IAR URL'), classes=['control-full', 'control-medium'], value=(data['iar_url'] if data['iar_url'] else '')) }}
 
-            {{ form.input('iar_api_key', label=_('IAR API Key'), value=(data['iar_api_key'] if data['iar_api_key'] else '')) }}
+            {{ form.input('iar_api_key', label=_('IAR API Key'), classes=['control-full', 'control-medium'], value=(data['iar_api_key'] if data['iar_api_key'] else '')) }}
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary" name="save">Reconcile</button>
