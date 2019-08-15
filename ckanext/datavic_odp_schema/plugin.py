@@ -33,6 +33,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         toolkit.add_template_directory(config_, 'templates')
         #toolkit.add_public_directory(config_, 'public')
         toolkit.add_resource('fanstatic', 'datavic-odp-schema')
+        toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations', 'Org. tools')
 
     ## IConfigurer interface ##
     def update_config_schema(self, schema):
@@ -92,7 +93,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
             controller='ckanext.datavic_odp_schema.controller:FormatController', action='formats')
         map.connect('/sitemap.xml',
             controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
-        map.connect('/ckan-admin/organisations',
+        map.connect('ckanadmin_organisations', '/ckan-admin/organisations',
             controller='ckanext.datavic_odp_schema.controller:OrganisationController', action='admin')
         return map
 
