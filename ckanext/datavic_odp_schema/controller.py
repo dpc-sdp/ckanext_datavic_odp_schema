@@ -2,15 +2,19 @@ from ckan.common import c, response, request
 from ckan.controllers.package import PackageController
 #import ckan.lib.package_saver as package_saver
 #from ckan.lib.base import BaseController
+import ckan.authz as authz
 import ckan.lib.base as base
 import ckan.lib as lib
 import ckan.logic as logic
 import ckan.model as model
+import ckan.plugins.toolkit as toolkit
 import sqlalchemy
 
 from ckanext.datavic_odp_theme import helpers
+import organization_helpers
 
 from ckan.controllers.api import ApiController
+from ckan.lib.navl.dictization_functions import unflatten
 
 _select = sqlalchemy.sql.select
 _and_ = sqlalchemy.and_
@@ -20,6 +24,11 @@ render = base.render
 NotFound = logic.NotFound
 NotAuthorized = logic.NotAuthorized
 get_action = logic.get_action
+clean_dict = logic.clean_dict
+tuplize_dict = logic.tuplize_dict
+parse_params = logic.parse_params
+abort = base.abort
+_ = base._
 
 class HistoricalController(PackageController):
 
@@ -90,3 +99,43 @@ class SitemapController(base.BaseController):
             sitemap += '<url><loc>' + request.host_url.replace('http:','https:') + '/group/' + group.name + '</loc></url> \n'
         sitemap += '</urlset> \n'
         return sitemap
+
+
+class OrganisationController(base.BaseController):
+
+    def admin(self):
+        # Only sysadmin users can generate reports
+        user = toolkit.c.userobj
+
+        if not user or not authz.is_sysadmin(user.name):
+            abort(403, _('You are not permitted to perform this action.'))
+
+        errors = []
+        vars = {}
+
+        if request.method == 'POST':
+            data_dict = clean_dict(unflatten(
+                tuplize_dict(parse_params(request.POST))))
+
+            vars['data'] = data_dict
+
+            source_url = data_dict.get('iar_url', None)
+            api_key = data_dict.get('iar_api_key', None)
+
+            if not source_url or not api_key:
+                errors.append('Both URL and API Key must be set')
+            if not organization_helpers.valid_url(source_url):
+                errors.append('Incorrect URL value')
+            if organization_helpers.contains_invalid_chars(api_key):
+                errors.append('Incorrect API Key value')
+
+            if len(errors):
+                vars['errors'] = errors
+            else:
+                # Everything appears to be in order - time to reconcile
+                context = {'model': model, 'session': model.Session}
+                vars['log'] = organization_helpers.reconcile_local_organisations(context, source_url, api_key)
+
+        return base.render('admin/organisations.html', extra_vars=vars)
+
+
