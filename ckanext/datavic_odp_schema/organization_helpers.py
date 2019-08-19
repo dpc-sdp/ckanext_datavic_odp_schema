@@ -134,23 +134,15 @@ def reconcile_local_organisations(context, source_url, api_key):
     :param api_key:
     :return:
     """
-    import pprint
-
     output = ''
 
     # Get local organisations & org tree
     local_orgs = _get_action('organization_list')(context, {})
 
-    # output += output_header('Existing local organisations')
-    # output += '\n'.join([org for org in local_orgs])
-
     remote_orgs = get_remote_organisations(source_url, api_key)
 
     if not type(remote_orgs) is list:
         return output + 'ERROR fetching remote organisations'
-
-    # output += output_header('Remote organisations')
-    # output += '%s\n' % pprint.pformat(remote_orgs)
 
     # Find any new organisations on the remote CKAN instance that don't exist locally and create them
     new_orgs = find_new_organisations(remote_orgs, local_orgs)
