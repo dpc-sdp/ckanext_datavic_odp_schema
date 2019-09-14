@@ -1,5 +1,6 @@
 import time
 import calendar
+import helpers
 import logging
 
 import ckan.plugins as plugins
@@ -59,6 +60,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
             'historical_resources_range': self.historical_resources_range,
             'is_historical': self.is_historical,
             'get_formats': self.get_formats,
+            'datavic_group_tree': helpers.datavic_group_tree,
         }
 
     ## IConfigurer interface ##
@@ -94,6 +96,8 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         map.connect('/sitemap.xml',
             controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
         map.connect('ckanadmin_organisations', '/ckan-admin/organisations',
+            controller='ckanext.datavic_odp_schema.controller:OrganisationController', action='admin')
+        map.connect('organization', '/organization',
             controller='ckanext.datavic_odp_schema.controller:OrganisationController', action='admin')
         return map
 
