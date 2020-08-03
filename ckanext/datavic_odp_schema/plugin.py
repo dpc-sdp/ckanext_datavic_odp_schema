@@ -25,6 +25,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IDatasetForm, inherit=True)
     plugins.implements(plugins.IRoutes, inherit=True)
+    plugins.implements(plugins.IPackageController, inherit=True)
 
     # IConfigurer
 
@@ -319,3 +320,14 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         })
 
         return schema
+
+    # IPackageController
+
+    def after_show(self, context, pkg_dict):
+        """
+        DATAVIC-232: Remove custodian details before showing or indexing dataset
+        """
+        pkg_dict.pop('maintainer', None)
+        pkg_dict.pop('maintainer_email', None)
+
+        return pkg_dict
