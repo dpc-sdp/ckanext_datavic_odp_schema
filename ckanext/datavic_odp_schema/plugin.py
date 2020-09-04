@@ -16,7 +16,7 @@ log1 = logging.getLogger(__name__)
 def parse_date(date_str):
     try:
         return calendar.timegm(time.strptime(date_str, "%Y-%m-%d"))
-    except Exception, e:
+    except Exception as e:
         return None
 
 
@@ -40,7 +40,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         schema.update({
             'ckan.datavic.authorised_resource_formats': [
                 toolkit.get_validator('ignore_missing'),
-                unicode
+                str
             ],
         })
 
@@ -78,7 +78,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
                     dict_of_formats.append({'value': item.lower(), 'text': item.upper()})
             dict_of_formats.insert(0, {'value': '', 'text': 'Please select'})
 
-        except Exception, e:
+        except Exception as e:
             return []
         else:
             return dict_of_formats
@@ -180,7 +180,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
 
         # DataVic: Helper function for adding extra dataset fields
         def append_field(extras_list, data, key):
-            items = filter(lambda t: t['key'] == key, extras_list)
+            items = list(filter(lambda t: t['key'] == key, extras_list))
             if items:
                 items[0]['value'] = data.get((key,))
             else:
@@ -260,14 +260,14 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         schema['__before'].insert(-1, before_validation_processor) # insert as second-to-last
 
         # Adjust validators for the Dataset/Package fields marked mandatory in the Data.Vic schema
-        schema['title'] = [toolkit.get_validator('not_empty'), unicode]
-        schema['notes'] = [toolkit.get_validator('not_empty'), unicode]
+        schema['title'] = [toolkit.get_validator('not_empty'), str]
+        schema['notes'] = [toolkit.get_validator('not_empty'), str]
 
         if toolkit.c.controller in ['dataset', 'package'] and toolkit.c.action not in ['resource_edit', 'new_resource', 'resource_delete']:
             schema['tag_string'] = [toolkit.get_validator('not_empty'), toolkit.get_converter('tag_string_convert')]
 
         # Adjust validators for the Resource fields marked mandatory in the Data.Vic schema
-        schema['resources']['format'] = [toolkit.get_validator('not_empty'), toolkit.get_validator('if_empty_guess_format'), toolkit.get_validator('clean_format'), unicode]
+        schema['resources']['format'] = [toolkit.get_validator('not_empty'), toolkit.get_validator('if_empty_guess_format'), toolkit.get_validator('clean_format'), str]
 
         return schema
 
