@@ -1,5 +1,3 @@
-import time
-import calendar
 import logging
 
 import ckan.plugins as plugins
@@ -12,13 +10,6 @@ from ckanext.datavic_odp_schema import schema as custom_schema
 _t = toolkit._
 
 log1 = logging.getLogger(__name__)
-
-
-def parse_date(date_str):
-    try:
-        return calendar.timegm(time.strptime(date_str, "%Y-%m-%d"))
-    except Exception as e:
-        return None
 
 
 class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
@@ -62,105 +53,12 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         return {
             'dataset_extra_fields': custom_schema.DATASET_EXTRA_FIELDS,
             'resource_extra_fields': custom_schema.RESOURCE_EXTRA_FIELDS,
-            'historical_resources_list': self.historical_resources_list,
-            'historical_resources_range': self.historical_resources_range,
-            'is_historical': self.is_historical,
-            'get_formats': self.get_formats,
+            'historical_resources_list': helpers.historical_resources_list,
+            'historical_resources_range': helpers.historical_resources_range,
+            'is_historical': helpers.is_historical,
+            'get_formats': helpers.get_formats,
         }
 
-    ## IConfigurer interface ##
-    def get_formats(self, limit=100):
-        try:
-            # Get any additional formats added in the admin settings
-            additional_formats = [x.strip() for x in config.get('ckan.datavic.authorised_resource_formats', []).split(',')]
-            q = request.GET.get('q', '')
-            list_of_formats = [x.encode('utf-8') for x in
-                               logic.get_action('format_autocomplete')({}, {'q': q, 'limit': limit}) if x] + additional_formats
-            list_of_formats = sorted(list(set(list_of_formats)))
-            dict_of_formats = []
-            for item in list_of_formats:
-                if item == ' ' or item == '':
-                    continue
-                else:
-                    dict_of_formats.append({'value': item.lower(), 'text': item.upper()})
-            dict_of_formats.insert(0, {'value': '', 'text': 'Please select'})
-
-        except Exception as e:
-            return []
-        else:
-            return dict_of_formats
-
-
-
-    # IRoutes
-    def before_map(self, map):
-        # map.connect('dataset_historical', '/dataset/{id}/historical',
-        #     controller='ckanext.datavic_odp_schema.controller:HistoricalController', action='historical')
-        # map.connect('format_list', '/api/3/action/format_list',
-        #     controller='ckanext.datavic_odp_schema.controller:FormatController', action='formats')
-        # map.connect('/sitemap.xml',
-        #     controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
-        map.connect('ckanadmin_organisations', '/ckan-admin/organisations',
-            controller='ckanext.datavic_odp_schema.controller:OrganisationController', action='admin')
-        return map
-
-
-    def historical_resources_list(self, resource_list):
-        sorted_resource_list = {}
-        i = 0
-        for resource in resource_list:
-            i += 1
-            if resource.get('period_start') is not None and resource.get('period_start') != 'None' and resource.get(
-                    'period_start') != '':
-                key = parse_date(resource.get('period_start')[:10]) or '9999999999' + str(i)
-            else:
-                key = '9999999999' + str(i)
-            resource['key'] = key
-            # print parser.parse(resource.get('period_start')).strftime("%Y-%M-%d") + " " + resource.get('period_start')
-            sorted_resource_list[key] = resource
-
-        list = sorted(sorted_resource_list.values(), key=lambda item: int(item.get('key')), reverse=True)
-        # for item in list:
-        #    print item.get('period_start') + " " + str(item.get('key'))
-        return list
-
-    def historical_resources_range(self, resource_list):
-        range_from = ""
-        from_ts = None
-        range_to = ""
-        to_ts = None
-        for resource in resource_list:
-
-            if resource.get('period_start') is not None and resource.get('period_start') != 'None' and resource.get(
-                    'period_start') != '':
-                ts = parse_date(resource.get('period_start')[:10])
-                if ts and (from_ts is None or ts < from_ts):
-                    from_ts = ts
-                    range_from = resource.get('period_start')[:10]
-            if resource.get('period_end') is not None and resource.get('period_end') != 'None' and resource.get(
-                    'period_end') != '':
-                ts = parse_date(resource.get('period_end')[:10])
-                if ts and (to_ts is None or ts > to_ts):
-                    to_ts = ts
-                    range_to = resource.get('period_end')[:10]
-
-        pattern = '^(\d{4})-(\d{2})-(\d{2})$'
-
-        if range_from and re.match(pattern, range_from):
-            range_from = re.sub(pattern, r'\3/\2/\1', range_from)
-        if range_to and re.match(pattern, range_to):
-            range_to = re.sub(pattern, r'\3/\2/\1', range_to)
-
-        if range_from != "" and range_to != "":
-            return range_from + " to " + range_to
-        elif range_from != "" or range_to != "":
-            return range_from + range_to
-        else:
-            return None
-
-    def is_historical(self):
-        if toolkit.c.action == 'historical':
-            return True
 
     ## IDatasetForm interface ##
 

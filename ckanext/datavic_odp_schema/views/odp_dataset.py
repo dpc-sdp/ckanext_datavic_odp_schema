@@ -19,17 +19,20 @@ ValidationError = toolkit.ValidationError
 check_access = toolkit.check_access
 get_action = toolkit.get_action
 
+_setup_template_variables = dataset._setup_template_variables
+_get_package_type = dataset._get_package_type
+
 
 render = toolkit.render
 abort = toolkit.abort
 
 log = logging.getLogger(__name__)
 
-odp_package = Blueprint('odp_package', __name__)
+odp_dataset = Blueprint('odp_dataset', __name__)
 
 
 def historical(id):
-    package_type = dataset._get_package_type(id.split('@')[0])
+    package_type = _get_package_type(id.split('@')[0])
 
     context = {'model': model, 'session': model.Session,
                 'user': g.user or g.author, 'for_view': True,
@@ -45,15 +48,13 @@ def historical(id):
         abort(401, _('Unauthorized to read package %s') % id)
 
     # used by disqus plugin
-    current_package_id = pkg.id
-    #c.related_count = c.pkg.related_count
-    dataset._setup_template_variables(context, {'id': id},
-                                    package_type=package_type)
+    g.current_package_id = pkg.id
+    extra_vars = {'pkg_dict': pkg_dict, 'pkg': pkg}
 
-    #package_saver.PackageSaver().render_package(c.pkg_dict, context)
+    _setup_template_variables(context, data_dict, package_type=package_type)
 
     try:
-        return render('package/read_historical.html')
+        return render('package/read_historical.html', extra_vars)
     except NotFound:
         msg = _("Viewing {package_type} datasets in {format} format is "
                 "not supported (template file {file} not found).".format(
@@ -71,4 +72,4 @@ def register_odp_dataset_plugin_rules(blueprint):
     blueprint.add_url_rule('/dataset/<id>/historical', view_func=historical)
     blueprint.add_url_rule('/api/action/format_list', view_func=formats)
 
-register_odp_dataset_plugin_rules(odp_package)
+register_odp_dataset_plugin_rules(odp_dataset)

@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 sitemap = Blueprint('sitemap', __name__)
 
-def sitemaps():
+def sitemap_view():
     sitemap_data = '<?xml version="1.0" encoding="UTF-8"?> \n'
     sitemap_data += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"> \n'
 
@@ -49,5 +49,8 @@ def sitemaps():
     response.headers["Content-Type"] = "application/xml"
     return response
 
-sitemap.add_url_rule('/sitemap.xml', view_func=sitemaps)    
-sitemap.add_url_rule('/sitemap', view_func=sitemaps) 
+def register_sitemap_plugin_rules(blueprint):
+    blueprint.add_url_rule('/sitemap.xml', view_func=sitemap_view)
+    blueprint.add_url_rule('/sitemap', view_func=sitemap_view)
+
+register_sitemap_plugin_rules(sitemap)
