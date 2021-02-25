@@ -98,8 +98,8 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         #     controller='ckanext.datavic_odp_schema.controller:HistoricalController', action='historical')
         # map.connect('format_list', '/api/3/action/format_list',
         #     controller='ckanext.datavic_odp_schema.controller:FormatController', action='formats')
-        map.connect('/sitemap.xml',
-            controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
+        # map.connect('/sitemap.xml',
+        #     controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
         map.connect('ckanadmin_organisations', '/ckan-admin/organisations',
             controller='ckanext.datavic_odp_schema.controller:OrganisationController', action='admin')
         return map

@@ -67,8 +67,8 @@ def formats():
     return api._finish(200, data, content_type='json')
 
 
-def register_datavicmain_plugin_rules(blueprint):
+def register_odp_dataset_plugin_rules(blueprint):
     blueprint.add_url_rule('/dataset/<id>/historical', view_func=historical)
     blueprint.add_url_rule('/api/action/format_list', view_func=formats)
 
-register_datavicmain_plugin_rules(odp_package)
+register_odp_dataset_plugin_rules(odp_package)

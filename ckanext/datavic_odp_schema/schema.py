@@ -30,7 +30,6 @@ def get_options(option_list):
             options.append(option.get('value'))
     return options
 
-
 def get_option_label(type, field, value):
     if type == 'dataset':
         schema = DATASET_EXTRA_FIELDS
