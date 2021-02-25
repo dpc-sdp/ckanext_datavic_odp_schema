@@ -30,7 +30,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
     def update_config(self, config_):
         toolkit.add_template_directory(config_, 'templates')
         #toolkit.add_public_directory(config_, 'public')
-        toolkit.add_resource('fanstatic', 'datavic-odp-schema')
+        toolkit.add_resource('webassets', 'datavic-odp-schema')
         #toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations', 'Org. tools')
 
     ## IConfigurer interface ##
