@@ -6,6 +6,7 @@ import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 import re
 
+import ckanext.datavic_odp_schema.helpers as helpers
 from ckanext.datavic_odp_schema import schema as custom_schema
 
 _t = toolkit._
@@ -26,6 +27,12 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
     plugins.implements(plugins.IDatasetForm, inherit=True)
     plugins.implements(plugins.IRoutes, inherit=True)
     plugins.implements(plugins.IPackageController, inherit=True)
+    plugins.implements(plugins.IBlueprint)
+
+
+    #IBlueprint
+    def get_blueprint(self):
+        return helpers._register_blueprints()
 
     # IConfigurer
 
@@ -33,7 +40,7 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         toolkit.add_template_directory(config_, 'templates')
         #toolkit.add_public_directory(config_, 'public')
         toolkit.add_resource('fanstatic', 'datavic-odp-schema')
-        toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations', 'Org. tools')
+        #toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations', 'Org. tools')
 
     ## IConfigurer interface ##
     def update_config_schema(self, schema):
@@ -87,10 +94,10 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
 
     # IRoutes
     def before_map(self, map):
-        map.connect('dataset_historical', '/dataset/{id}/historical',
-            controller='ckanext.datavic_odp_schema.controller:HistoricalController', action='historical')
-        map.connect('format_list', '/api/3/action/format_list',
-            controller='ckanext.datavic_odp_schema.controller:FormatController', action='formats')
+        # map.connect('dataset_historical', '/dataset/{id}/historical',
+        #     controller='ckanext.datavic_odp_schema.controller:HistoricalController', action='historical')
+        # map.connect('format_list', '/api/3/action/format_list',
+        #     controller='ckanext.datavic_odp_schema.controller:FormatController', action='formats')
         map.connect('/sitemap.xml',
             controller='ckanext.datavic_odp_schema.controller:SitemapController', action='sitemap')
         map.connect('ckanadmin_organisations', '/ckan-admin/organisations',
