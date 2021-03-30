@@ -15,7 +15,7 @@ log1 = logging.getLogger(__name__)
 class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
     plugins.implements(plugins.ITemplateHelpers)
     plugins.implements(plugins.IConfigurer)
-    plugins.implements(plugins.IDatasetForm, inherit=True)
+    # plugins.implements(plugins.IDatasetForm, inherit=True)
     plugins.implements(plugins.IRoutes, inherit=True)
     plugins.implements(plugins.IPackageController, inherit=True)
     plugins.implements(plugins.IBlueprint)
