@@ -89,6 +89,7 @@ def is_historical():
     if toolkit.g.action == 'historical':
         return True
 
+
 def get_formats(limit=100):
     try:
         # Get any additional formats added in the admin settings
@@ -104,14 +105,29 @@ def get_formats(limit=100):
             else:
                 dict_of_formats.append({'value': item.lower(), 'text': item.upper()})
         dict_of_formats.insert(0, {'value': '', 'text': 'Please select'})
-
     except Exception as e:
+        log.error(e)
         return []
     else:
         return dict_of_formats
+
 
 def _parse_date(date_str):
     try:
         return calendar.timegm(time.strptime(date_str, "%Y-%m-%d"))
     except Exception as e:
+        log.error(e)
         return None
+
+
+def dataset_fields(dataset_type='dataset'):
+    schema = toolkit.h.scheming_get_dataset_schema(dataset_type)
+    return schema.get('dataset_fields', [])
+    
+
+def get_options(option_list):
+    options = []
+    if option_list is not None:
+        for option in option_list:
+            options.append(option.get('value'))
+    return options
