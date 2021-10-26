@@ -8,8 +8,7 @@
     </p>
   {%- endif -%}
   {%- set schema = h.scheming_get_dataset_schema(dataset_type) -%}
-
-   <!-- End Custom -->
+   {%- for field in schema.dataset_fields -%}
     {%- if field.form_snippet is not none -%}
       {%- snippet 'scheming/snippets/form_field.html',
         field=field, data=data, errors=errors, licenses=g.licenses,
@@ -17,7 +16,6 @@
     {%- endif -%}
   {%- endfor -%}
   {%- if 'resource_fields' not in schema -%}
-    <!-- force controller to skip resource-editing step for this type -->
     <input type="hidden" name="_ckan_phase" value="" />
   {%- endif -%}
 

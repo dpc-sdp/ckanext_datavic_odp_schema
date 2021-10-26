@@ -14,96 +14,91 @@
 
   {% block package_metadata_fields_custom %}
 
-  {% for field_id, field_attributes in h.dataset_extra_fields %}
-    {% if field_attributes['hidden'] != True and field_attributes['field_group'] not in ['licence', 'maintainer'] %}
-        {% if field_id == 'category' %}
-          {{ form.select(field_id,
-            label=_(field_attributes['label']), id='field-' + field_id,
-            options = h.group_list(),
-            selected = data.get(field_id, None),
-            attrs = { 'data-module': 'no-autocomplete' },
-            error=errors.get(field_id),
-            is_required=true)
-          }}
-        {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'date' %}
-          {{ form.input(field_id,
-            label=_(field_attributes['label']), id='field-' + field_id,
-            placeholder=_('YYYY-MM-DD'),
-            value=data.get(field_id),
-            error=errors.get(field_id),
-            classes=['control-small calendar'],
-            is_required=field_attributes['required']|default(false))
-          }}
-        {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'yes_no' %}
-          {{ form.select(field_id,
-            label = _(field_attributes['label']),
-            options = h.yes_no_options(),
-            selected = data.get(field_id, None),
-            attrs = { 'data-module': 'no-autocomplete' },
-            error=errors.get(field_id),
-            is_required=field_attributes['required']|default(false))
-          }}
-        {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'select' %}
-          {{ form.select(field_id,
-            label = _(field_attributes['label']),
-            options = field_attributes['options'],
-            selected = data.get(field_id, None),
-            attrs = { 'data-module': 'no-autocomplete' },
-            error=errors.get(field_id),
-            is_required=field_attributes['required']|default(false))
-          }}
-        {% elif field_id == 'workflow_status_notes'  %}
-            {% if h.is_admin(data.get('owner_org', None)) %}
-                {{ form.textarea(field_id,
-                    label = _(field_attributes['label']),
-                    value=data.get(field_id),
-                    error=errors.get(field_id),
-                    classes=['control-medium'])
-                }}
-            {% endif %}
-        {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'textarea' %}
-          {{ form.textarea(field_id,
-            label = _(field_attributes['label']),
-            value=data.get(field_id),
-            error=errors.get(field_id),
-            classes=['control-full'],
-            is_required=field_attributes['required']|default(false))
-          }}
-        {% elif field_id == 'workflow_status'  %}
-          {{ form.select(field_id,
-            label = _(field_attributes['label']),
-            options = h.workflow_status_options(data.get(field_id, None), data.get('owner_org', None)),
-            selected = data.get(field_id, None),
-            attrs = { 'data-module': 'no-autocomplete' })
-          }}
-        {% elif field_id == 'organization_visibility'  %}
-          {{ form.select(field_id,
-            label = _(field_attributes['label']),
-            options = h.organization_visibility_options(),
-            selected = data.get(field_id, None),
-            attrs = { 'data-module': 'no-autocomplete' })
-          }}
-        {% else  %}
-          {{ form.input(field_id,
-            label=_(field_attributes['label']), id='field-' + field_id,
-            placeholder=_(field_attributes['label']),
-            value=data.get(field_id),
-            error=errors.get(field_id),
-            classes=['control-medium'],
-            is_required=field_attributes['required']|default(false))
-          }}
-        {% endif %}
-        {% if field_attributes['description'] %}
-        <small>{{ field_attributes['description'] }}</small>
-        {% endif %}
-    {% endif %}
-  {% endfor %}
-
-
-    {% block custom_fields %}
-      {#% snippet 'snippets/custom_form_fields.html', extras=data.extras, errors=errors, limit=3 %#}
-    {% endblock %}
-  {% endblock %}
+  {{  h.dataset_fields }}
+    {% for field_id, field_attributes in h.dataset_fields %}
+      {% if field_attributes['hidden'] != True and field_attributes['field_group'] not in ['licence', 'maintainer'] %}
+          {% if field_id == 'category' %}
+            {{ form.select(field_id,
+              label=_(field_attributes['label']), id='field-' + field_id,
+              options = h.group_list(),
+              selected = data.get(field_id, None),
+              attrs = { 'data-module': 'no-autocomplete' },
+              error=errors.get(field_id),
+              is_required=true)
+            }}
+          {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'date' %}
+            {{ form.input(field_id,
+              label=_(field_attributes['label']), id='field-' + field_id,
+              placeholder=_('YYYY-MM-DD'),
+              value=data.get(field_id),
+              error=errors.get(field_id),
+              classes=['control-small calendar'],
+              is_required=field_attributes['required']|default(false))
+            }}
+          {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'yes_no' %}
+            {{ form.select(field_id,
+              label = _(field_attributes['label']),
+              options = h.yes_no_options(),
+              selected = data.get(field_id, None),
+              attrs = { 'data-module': 'no-autocomplete' },
+              error=errors.get(field_id),
+              is_required=field_attributes['required']|default(false))
+            }}
+          {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'select' %}
+            {{ form.select(field_id,
+              label = _(field_attributes['label']),
+              options = field_attributes['options'],
+              selected = data.get(field_id, None),
+              attrs = { 'data-module': 'no-autocomplete' },
+              error=errors.get(field_id),
+              is_required=field_attributes['required']|default(false))
+            }}
+          {% elif field_id == 'workflow_status_notes'  %}
+              {% if h.is_admin(data.get('owner_org', None)) %}
+                  {{ form.textarea(field_id,
+                      label = _(field_attributes['label']),
+                      value=data.get(field_id),
+                      error=errors.get(field_id),
+                      classes=['control-medium'])
+                  }}
+              {% endif %}
+          {% elif field_attributes['field_type'] and field_attributes['field_type'] == 'textarea' %}
+            {{ form.textarea(field_id,
+              label = _(field_attributes['label']),
+              value=data.get(field_id),
+              error=errors.get(field_id),
+              classes=['control-full'],
+              is_required=field_attributes['required']|default(false))
+            }}
+          {% elif field_id == 'workflow_status'  %}
+            {{ form.select(field_id,
+              label = _(field_attributes['label']),
+              options = h.workflow_status_options(data.get(field_id, None), data.get('owner_org', None)),
+              selected = data.get(field_id, None),
+              attrs = { 'data-module': 'no-autocomplete' })
+            }}
+          {% elif field_id == 'organization_visibility'  %}
+            {{ form.select(field_id,
+              label = _(field_attributes['label']),
+              options = h.organization_visibility_options(),
+              selected = data.get(field_id, None),
+              attrs = { 'data-module': 'no-autocomplete' })
+            }}
+          {% else  %}
+            {{ form.input(field_id,
+              label=_(field_attributes['label']), id='field-' + field_id,
+              placeholder=_(field_attributes['label']),
+              value=data.get(field_id),
+              error=errors.get(field_id),
+              classes=['control-medium'],
+              is_required=field_attributes['required']|default(false))
+            }}
+          {% endif %}
+          {% if field_attributes['description'] %}
+          <small>{{ field_attributes['description'] }}</small>
+          {% endif %}
+      {% endif %}
+    {% endfor %}
 
   {% block dataset_fields %}
   {% endblock %}

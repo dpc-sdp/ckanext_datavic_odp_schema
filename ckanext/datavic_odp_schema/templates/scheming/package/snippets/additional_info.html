@@ -1,35 +1,69 @@
-{% extends "package/snippets/additional_info.html" %}
-
-{%- set exclude_fields = [
-    'id',
-    'title',
-    'name',
-    'notes',
-    'tag_string',
-    'license_id',
-    'owner_org',
-    ] -%}
-
-
-{% block package_additional_info %}
-  {%- for field in schema.dataset_fields -%}
-    {%- if field.field_name not in exclude_fields
-        and field.display_snippet is not none -%}
+<section class="additional-info">
+  <h3>{{ _('Additional Information') }}</h3>
+  <table class="table table-striped table-bordered table-condensed">
+    <thead>
       <tr>
-        <th scope="row" class="dataset-label">
-                {{ h.scheming_language_text(field.label) }}
-        </th>
-        <td class="dataset-details"{%
-          if field.display_property %} property="{{ field.display_property
-          }}"{% endif %}>{%- snippet 'scheming/snippets/display_field.html',
-          field=field, data=pkg_dict, schema=schema -%}</td>
+        <th scope="col">{{ _('Field') }}</th>
+        <th scope="col">{{ _('Value') }}</th>
       </tr>
-    {%- endif -%}
-  {%- endfor -%}
-  {% if h.check_access('package_update',{'id':pkg_dict.id}) %}
-    <tr>
-      <th scope="row" class="dataset-label">{{ _("State") }}</th>
-      <td class="dataset-details">{{ _(pkg_dict.state) }}</td>
-    </tr>
-  {% endif %}
-{% endblock %}
+    </thead>
+    <tbody>
+      {% block package_additional_info %}
+
+        {% if h.check_access('package_update',{'id':pkg_dict.id}) %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("State") }}</th>
+            <td class="dataset-details">{{ _(pkg_dict.state) }}</td>
+          </tr>
+        {% endif %}
+        {% if pkg_dict.date_created_data_asset %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Created (Data asset)") }}</th>
+            <td class="dataset-details" property="dct:issued">
+              {{ h.render_datetime(pkg_dict.date_created_data_asset, date_format='%d/%m/%Y') }}
+            </td>
+          </tr>
+        {% elif pkg_dict.metadata_created %}
+          {% set release_date = h.release_date(pkg_dict) %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Published (Metadata Record)") }}</th>
+            <td class="dataset-details" property="dct:issued">
+              {{ h.render_datetime(release_date, date_format='%d/%m/%Y') }}
+            </td>
+          </tr>
+        {% endif %}
+        {% if pkg_dict.date_modified_data_asset %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Last modified (Data asset)") }}</th>
+            <td class="dataset-details" property="dct:updated">
+              {{ h.render_datetime(pkg_dict.date_modified_data_asset, date_format='%d/%m/%Y') }}
+            </td>
+          </tr>
+        {% elif pkg_dict.metadata_modified %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Last updated") }}</th>
+            <td class="dataset-details" property="dct:updated">
+              {{ h.render_datetime(pkg_dict.metadata_modified, date_format='%d/%m/%Y') }}
+            </td>
+          </tr>
+        {% endif %}
+
+        {% if pkg_dict.organization %}
+          {% set org = h.get_organization(pkg_dict.organization.name) %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _('Organisation') }}</th>
+            <td class="dataset-details" property="dc:contributor">{{ org.title }}</td>
+          </tr>
+        {% endif %}
+
+        {% if pkg_dict.license_id %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _('License') }}</th>
+            <td class="dataset-details">{{ pkg_dict.license_title }}</td>
+          </tr>
+        {% endif %}
+
+      {% endblock %}
+    </tbody>
+  </table>
+</section>
