@@ -39,7 +39,7 @@ class MigrateFullMetadataUrl(CkanCommand):
             })
         except NotFound:
             print('- Local package name %s not found.' % package_name)
-        except ValueError, e:
+        except ValueError as e:
             self.errors.append(str(e))
         return local_package
 
@@ -50,7 +50,7 @@ class MigrateFullMetadataUrl(CkanCommand):
             remote_package = source.action.package_show(id=package_name)
         except NotFound:
             print('- No remote package found for package ID %s.' % package_name)
-        except CKANAPIError, e:
+        except CKANAPIError as e:
             self.errors.append(str(e))
         return remote_package
 
@@ -63,7 +63,7 @@ class MigrateFullMetadataUrl(CkanCommand):
         try:
             toolkit.get_action('package_patch')(data_dict={'id': package_id, 'full_metadata_url': full_metadata_url})
             return True
-        except ValidationError, e:
+        except ValidationError as e:
             print('- Validation Error %s' % e)
         return False
 

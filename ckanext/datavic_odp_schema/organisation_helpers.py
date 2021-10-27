@@ -20,7 +20,7 @@ def get_remote_organisations(source_url, api_key):
             'include_dataset_count': False,
             'include_groups': True
         })
-    except Exception, e:
+    except Exception as e:
         return str(e)
 
 
@@ -55,7 +55,7 @@ def create_new_organisations(new_organisations):
                 'title': new_org['title'],
             })
             successes.append(new_org['name'])
-        except Exception, e:
+        except Exception as e:
             errors.append({'name': new_org['name'], 'error': str(e)})
             continue
 
@@ -77,7 +77,7 @@ def reset_existing_hierarchy(context, organisations):
             if organisation['groups']:
                 _get_action('organization_patch')(context, {'id': organisation['id'], 'groups': []})
                 successes.append(org)
-        except Exception, e:
+        except Exception as e:
             errors.append({'name': org, 'error': str(e)})
             continue
 
@@ -92,7 +92,7 @@ def assign_parent_organisations(context, remote_orgs):
             try:
                 _get_action('organization_patch')(context, {'id': remote_org['name'], 'groups': remote_org['groups']})
                 successes.append({'name': remote_org['name'], 'groups': remote_org['groups']})
-            except Exception, e:
+            except Exception as e:
                 errors.append({'name': remote_org['name'], 'error': str(e)})
                 continue
 
