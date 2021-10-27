@@ -23,12 +23,11 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         return helpers._register_blueprints()
 
     # IConfigurer
-
     def update_config(self, config_):
         toolkit.add_template_directory(config_, 'templates')
         # toolkit.add_public_directory(config_, 'public')
         toolkit.add_resource('webassets', 'datavic-odp-schema')
-        # toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations', 'Org. tools')
+        toolkit.add_ckan_admin_tab(config_, 'ckanadmin_organisations.admin', 'Org. tools')
 
     # IConfigurer interface ##
     def update_config_schema(self, schema):
@@ -42,7 +41,6 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
         return schema
 
     # ITemplateHelpers interface ##
-
     def get_helpers(self):
         ''' Return a dict of named helper functions (as defined in the ITemplateHelpers interface).
         These helpers will be available under the 'h' thread-local global object.

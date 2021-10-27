@@ -2,7 +2,7 @@
 
 {% block primary_content_inner %}
 
-    {% set url = h.url_for('ckanadmin_organisations') %}
+    {% set url = h.url_for('ckanadmin_organisations.admin') %}
     {% set data = data if data else [] %}
 
     {% if log %}
