@@ -123,11 +123,4 @@ def _parse_date(date_str):
 def dataset_fields(dataset_type='dataset'):
     schema = toolkit.h.scheming_get_dataset_schema(dataset_type)
     return schema.get('dataset_fields', [])
-    
 
-def get_options(option_list):
-    options = []
-    if option_list is not None:
-        for option in option_list:
-            options.append(option.get('value'))
-    return options
