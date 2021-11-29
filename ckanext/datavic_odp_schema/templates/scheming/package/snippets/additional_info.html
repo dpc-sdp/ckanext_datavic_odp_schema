@@ -62,7 +62,18 @@
             <td class="dataset-details">{{ pkg_dict.license_title }}</td>
           </tr>
         {% endif %}
-
+        {% if pkg_dict.full_metadata_url %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _('Full metadata URL') }}</th>
+            <td class="dataset-details">
+            {% if pkg_dict.full_metadata_url.startswith('http') %}
+              <a href="{{ pkg_dict.full_metadata_url }}" target="_blank" rel="nofollow">{{ pkg_dict.full_metadata_url }}</a>
+            {% else %}
+              {{ pkg_dict.full_metadata_url }}
+          {% endif %}
+            </td>
+          </tr>
+        {% endif %}
       {% endblock %}
     </tbody>
   </table>
