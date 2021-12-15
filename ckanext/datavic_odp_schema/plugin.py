@@ -4,7 +4,7 @@ import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 
 import ckanext.datavic_odp_schema.helpers as helpers
-import ckaext.datavic_odp_schema.cli as cli
+import ckanext.datavic_odp_schema.cli as cli
 
 
 log = logging.getLogger(__name__)

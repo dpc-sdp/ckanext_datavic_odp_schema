@@ -2,7 +2,7 @@ import click
 import logging
 
 from ckan.plugins.toolkit import enqueue_job
-from ckanext.datavic_odp_schema.jobs import jobs
+from ckanext.datavic_odp_schema import jobs
 
 log = logging.getLogger(__name__)
 
