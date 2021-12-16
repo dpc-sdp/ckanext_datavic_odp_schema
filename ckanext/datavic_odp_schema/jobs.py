@@ -3,7 +3,7 @@ import requests
 import logging
 
 log = logging.getLogger(__name__)
-monitor_url = os.environ.get('JOBWORKER_MONITOR_URL')
+monitor_url = os.environ.get('MONITOR_URL_JOBWORKER')
 
 def ckan_worker_job_monitor():
     try:
