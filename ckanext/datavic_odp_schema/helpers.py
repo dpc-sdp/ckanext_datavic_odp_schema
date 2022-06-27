@@ -124,3 +124,8 @@ def dataset_fields(dataset_type='dataset'):
     schema = toolkit.h.scheming_get_dataset_schema(dataset_type)
     return schema.get('dataset_fields', [])
 
+
+def is_other_license(pkg):
+    if pkg.get('license_id') in ['other', 'other-open']:
+        return True
+    return False

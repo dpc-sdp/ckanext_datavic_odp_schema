@@ -47,7 +47,8 @@ class DatavicODPSchema(plugins.SingletonPlugin, toolkit.DefaultDatasetForm):
             'historical_resources_range': helpers.historical_resources_range,
             'is_historical': helpers.is_historical,
             'get_formats': helpers.get_formats,
-            'dataset_fields': helpers.dataset_fields('dataset')
+            'dataset_fields': helpers.dataset_fields('dataset'),
+            'is_other_license': helpers.is_other_license
         }
     
     # IClick
