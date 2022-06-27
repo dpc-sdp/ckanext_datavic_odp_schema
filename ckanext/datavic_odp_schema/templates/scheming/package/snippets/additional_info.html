@@ -56,11 +56,30 @@
           </tr>
         {% endif %}
 
-        {% if pkg_dict.license_id %}
+        {% if pkg_dict.license_id != 'other' %}
           <tr>
             <th scope="row" class="dataset-label">{{ _('License') }}</th>
-            <td class="dataset-details">{{ pkg_dict.license_title }}</td>
+            <td class="dataset-details">
+              {% if 'license_url' in pkg_dict %}
+                <a href="{{ pkg_dict.license_url }}" rel="dc:rights">{{ pkg_dict.license_title }}</a>
+              {% else %}
+                <span property="dc:rights">{{ pkg_dict.license_title }}</span>
+              {% endif %}
+            </td>
           </tr>
+        {% else %}
+          {% if pkg_dict.custom_licence_text %}
+            <tr>
+              <th scope="row" class="dataset-label">{{ _('License - other') }}</th>
+              <td class="dataset-details">{{ pkg_dict.custom_licence_text }}</td>
+            </tr>
+          {% endif %}
+          {% if pkg_dict.custom_licence_link %}
+            <tr>
+              <th scope="row" class="dataset-label">{{ _('Custom license link') }}</th>
+              <td class="dataset-details">{{ pkg_dict.custom_licence_link }}</td>
+            </tr>
+          {% endif %}
         {% endif %}
         {% if pkg_dict.full_metadata_url %}
           <tr>
