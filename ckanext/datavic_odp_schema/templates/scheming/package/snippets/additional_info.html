@@ -56,7 +56,7 @@
           </tr>
         {% endif %}
 
-        {% if pkg_dict.license_id != 'other' %}
+        {% if not h.is_other_license(pkg_dict) %}
           <tr>
             <th scope="row" class="dataset-label">{{ _('License') }}</th>
             <td class="dataset-details">
