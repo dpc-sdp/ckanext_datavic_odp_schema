@@ -68,6 +68,13 @@ dataset_fields:
   validators: boolean_validator
   output_validators: boolean_validator
 
+- field_name: nominated_view_id
+  display_snippet: null
+  form_snippet: vic_hidden.html
+
+- field_name: nominated_view_resource
+  display_snippet: null
+  form_snippet: vic_hidden.html
 
 resource_fields:
 
