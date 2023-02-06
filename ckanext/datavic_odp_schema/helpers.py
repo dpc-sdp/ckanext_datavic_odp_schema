@@ -48,7 +48,6 @@ def historical_resources_list(resource_list):
         else:
             key = "9999999999" + str(i)
         resource["key"] = key
-        # print parser.parse(resource.get('period_start')).strftime("%Y-%M-%d") + " " + resource.get('period_start')
         sorted_resource_list[key] = resource
 
     list = sorted(
@@ -56,8 +55,7 @@ def historical_resources_list(resource_list):
         key=lambda item: int(item.get("key")),
         reverse=True,
     )
-    # for item in list:
-    #    print item.get('period_start') + " " + str(item.get('key'))
+
     return list
 
 
@@ -106,49 +104,12 @@ def is_historical():
         return True
 
 
-def get_formats(limit=100):
-    try:
-        # Get any additional formats added in the admin settings
-        additional_formats = [
-            x.strip()
-            for x in toolkit.config.get(
-                "ckan.datavic.authorised_resource_formats", []
-            ).split(",")
-        ]
-        q = toolkit.request.GET.get("q", "")
-        list_of_formats = [
-            x.encode("utf-8")
-            for x in toolkit.get_action("format_autocomplete")(
-                {}, {"q": q, "limit": limit}
-            )
-            if x
-        ] + additional_formats
-        list_of_formats = sorted(list(set(list_of_formats)))
-        dict_of_formats = []
-        for item in list_of_formats:
-            if item == " " or item == "":
-                continue
-            else:
-                dict_of_formats.append({"value": item.lower(), "text": item.upper()})
-        dict_of_formats.insert(0, {"value": "", "text": "Please select"})
-    except Exception as e:
-        log.error(e)
-        return []
-    else:
-        return dict_of_formats
-
-
 def _parse_date(date_str):
     try:
         return calendar.timegm(time.strptime(date_str, "%Y-%m-%d"))
     except Exception as e:
         log.error(e)
         return None
-
-
-def dataset_fields(dataset_type="dataset"):
-    schema = toolkit.h.scheming_get_dataset_schema(dataset_type)
-    return schema.get("dataset_fields", [])
 
 
 def is_other_license(pkg):
