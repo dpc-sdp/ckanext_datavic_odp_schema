@@ -24,7 +24,8 @@ abort = toolkit.abort
 
 log = logging.getLogger(__name__)
 
-sitemap = Blueprint('sitemap', __name__)
+sitemap = Blueprint("sitemap", __name__)
+
 
 def sitemap_view():
     sitemap_data = '<?xml version="1.0" encoding="UTF-8"?> \n'
@@ -32,25 +33,49 @@ def sitemap_view():
 
     package_table = model.package_table
     query = _select([package_table.c.name, package_table.c.metadata_modified])
-    query = query.where(_and_(
-        package_table.c.state == 'active',
-        package_table.c.private == False,
-    ))
+    query = query.where(
+        _and_(
+            package_table.c.state == "active",
+            package_table.c.private == False,
+        )
+    )
     query = query.order_by(package_table.c.name)
 
     for package in query.execute():
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/dataset/' + package.name + '</loc><lastmod>' + package.metadata_modified.strftime('%Y-%m-%d') + '</lastmod></url> \n'
-    for organisation in model.Group.all('organization'):
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/organization/' + organisation.name + '</loc></url> \n'
-    for group in model.Group.all('group'):
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/group/' + group.name + '</loc></url> \n'
-    sitemap_data += '</urlset> \n'
+        sitemap_data += (
+            "<url><loc>"
+            + toolkit.request.host_url.replace("http:", "https:")
+            + "/dataset/"
+            + package.name
+            + "</loc><lastmod>"
+            + package.metadata_modified.strftime("%Y-%m-%d")
+            + "</lastmod></url> \n"
+        )
+    for organisation in model.Group.all("organization"):
+        sitemap_data += (
+            "<url><loc>"
+            + toolkit.request.host_url.replace("http:", "https:")
+            + "/organization/"
+            + organisation.name
+            + "</loc></url> \n"
+        )
+    for group in model.Group.all("group"):
+        sitemap_data += (
+            "<url><loc>"
+            + toolkit.request.host_url.replace("http:", "https:")
+            + "/group/"
+            + group.name
+            + "</loc></url> \n"
+        )
+    sitemap_data += "</urlset> \n"
     response = make_response(sitemap_data)
     response.headers["Content-Type"] = "application/xml"
     return response
 
+
 def register_sitemap_plugin_rules(blueprint):
-    blueprint.add_url_rule('/sitemap.xml', view_func=sitemap_view)
-    blueprint.add_url_rule('/sitemap', view_func=sitemap_view)
+    blueprint.add_url_rule("/sitemap.xml", view_func=sitemap_view)
+    blueprint.add_url_rule("/sitemap", view_func=sitemap_view)
+
 
 register_sitemap_plugin_rules(sitemap)
