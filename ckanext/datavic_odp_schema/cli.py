@@ -1,8 +1,11 @@
-import click
 import logging
 
+import click
+
 from ckan.plugins.toolkit import enqueue_job
+
 from ckanext.datavic_odp_schema import jobs
+
 
 log = logging.getLogger(__name__)
 

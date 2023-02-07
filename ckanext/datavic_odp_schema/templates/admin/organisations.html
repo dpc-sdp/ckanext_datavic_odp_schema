@@ -2,58 +2,55 @@
 
 {% block primary_content_inner %}
 
-    {% set url = h.url_for('ckanadmin_organisations.admin') %}
+    {% set url = h.url_for('odp_admin.organisations') %}
     {% set data = data if data else [] %}
 
     {% if log %}
-
         {% if data %}
-            <h3>Values submitted:</h3>
+            <h3>{{ _('Values submitted:') }}</h3>
             <p>
-                <strong>IAR URL: </strong> {{ data['iar_url'] }}
+                <strong>{{ _('IAR URL:') }} </strong> {{ data['iar_url'] }}
             </p>
             <p>
-                <strong>IAR API Key: </strong> {{ data['iar_api_key'] }}
+                <strong>{{ _('IAR API Key:') }} </strong> {{ data['iar_api_key'] }}
             </p>
-            <p><a href="{{ h.url_for('/organization') }}">View Organisation structure</a></p>
+            <p><a href="{{ h.url_for('/organization') }}">{{ _('View Organisation structure') }}</a></p>
             <hr />
             <p><a class="btn" href="{{ url }}">&lt; {{ _('Back') }}</a></p>
         {% endif %}
 
-        <h3>Log:</h3>
+        <h3>{{ _('Log:') }}</h3>
         <div class="well">
             <pre>{{ log }}</pre>
         </div>
         <p><a class="btn" href="{{ url }}">&lt; {{ _('Back') }}</a></p>
-
     {% else %}
-
         {% import 'macros/form.html' as form %}
 
-        <h2>Reconcile Organisations</h2>
+        <h2>{{ _('Reconcile Organisations') }}</h2>
 
         <p>
-            <span class="label label-warning">Warning!</span>
+            <span class="label label-warning">{{ _('Warning!') }}</span>
+            {%- trans -%}
             Filling in this form and clicking the <strong>Reconcile</strong> button below will adjust the
             organisation hierarchy on this site based on the hierarchy from the source IAR URL.
+            {%- endtrans -%}
         </p>
 
-        <h3>IAR Settings</h3>
+        <h3>{{ _('IAR Settings') }}</h3>
 
         {% if errors %}
-        <div class="alert alert-danger">
-            <ul>
-            {% for error in errors %}
-                <li>{{ error }}</li>
-            {% endfor %}
-            </ul>
-        </div>
+            <div class="alert alert-danger">
+                <ul>
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+                </ul>
+            </div>
         {% endif %}
 
         <form action="{{ url }}" method="post" class="form-horizontal">
-
             {{ form.input('iar_url', label=_('IAR URL'), classes=['control-full', 'control-medium'], value=(data['iar_url'] if data['iar_url'] else '')) }}
-
             {{ form.input('iar_api_key', label=_('IAR API Key'), classes=['control-full', 'control-medium'], value=(data['iar_api_key'] if data['iar_api_key'] else '')) }}
 
             <div class="form-actions">
@@ -71,9 +68,10 @@
       <i class="fa fa-info-circle"></i>
       {{ _('Reconcile Organisations') }}
     </h2>
+
     <div class="module-content">
       {% block admin_form_help %}
-        Reconciles the organisations of this CKAN site against an IAR CKAN site.
+        {{ _('Reconciles the organisations of this CKAN site against an IAR CKAN site.') }}
       {% endblock %}
     </div>
   </div>

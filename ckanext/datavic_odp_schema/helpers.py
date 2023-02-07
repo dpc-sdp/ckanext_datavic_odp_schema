@@ -1,35 +1,12 @@
-import os
 import re
-import pkgutil
-import inspect
 import logging
-
 import time
 import calendar
 
-from flask import Blueprint
-
-import ckan.plugins.toolkit as toolkit
+import ckan.plugins.toolkit as tk
 
 
 log = logging.getLogger(__name__)
-
-
-def _register_blueprints():
-    """Return all blueprints defined in the `views` folder"""
-    blueprints = []
-
-    def is_blueprint(mm):
-        return isinstance(mm, Blueprint)
-
-    path = os.path.join(os.path.dirname(__file__), "views")
-
-    for loader, name, _ in pkgutil.iter_modules([path]):
-        module = loader.find_module(name).load_module(name)
-        for blueprint in inspect.getmembers(module, is_blueprint):
-            blueprints.append(blueprint[1])
-            log.info("Registered blueprint: {0!r}".format(blueprint[0]))
-    return blueprints
 
 
 def historical_resources_list(resource_list):
@@ -100,7 +77,7 @@ def historical_resources_range(resource_list):
 
 
 def is_historical():
-    if toolkit.g.action == "historical":
+    if tk.g.action == "historical":
         return True
 
 

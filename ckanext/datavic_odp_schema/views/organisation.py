@@ -1,4 +1,6 @@
-import logging
+from __future__ import annotations
+
+from typing import Optional, Any
 
 from flask import Blueprint
 
@@ -10,63 +12,48 @@ import ckan.logic as logic
 from ckan.lib.navl.dictization_functions import unflatten
 import ckanext.datavic_odp_schema.organisation_helpers as organisation_helpers
 
-NotFound = tk.ObjectNotFound
-NotAuthorized = tk.NotAuthorized
-ValidationError = tk.ValidationError
-check_access = tk.check_access
-get_action = tk.get_action
 
 clean_dict = logic.clean_dict
 tuplize_dict = logic.tuplize_dict
 parse_params = logic.parse_params
 
-render = tk.render
-abort = tk.abort
+organisation = Blueprint("odp_admin", __name__)
 
 
-ckanadmin_organisations = Blueprint("ckanadmin_organisations", __name__)
-
-
-def admin():
-    user = tk.g.userobj
+@organisation.route(
+    "/ckan-admin/organisations", methods=["GET", "POST"], endpoint="organisations"
+)
+def index():
+    user: Optional[model.User] = tk.g.userobj
 
     if not user or not authz.is_sysadmin(user.name):
-        abort(403, tk._("You are not permitted to perform this action."))
+        return tk.abort(403, tk._("You are not permitted to perform this action."))
 
-    errors = []
-    vars = {}
+    errors: list[str] = []
+    vars: dict[str, Any] = {}
 
-    if tk.request.method == "POST":
-        data_dict = clean_dict(unflatten(tuplize_dict(parse_params(tk.request.form))))
+    if tk.request.method != "POST":
+        return tk.render("admin/organisations.html", extra_vars=vars)
 
-        vars["data"] = data_dict
+    data_dict: dict[str, Any] = clean_dict(unflatten(tuplize_dict(parse_params(tk.request.form))))
 
-        source_url = data_dict.get("iar_url", None)
-        api_key = data_dict.get("iar_api_key", None)
+    vars["data"] = data_dict
 
-        if not source_url or not api_key:
-            errors.append("Both URL and API Key must be set")
-        if not organisation_helpers.valid_url(source_url):
-            errors.append("Incorrect URL value")
-        if organisation_helpers.contains_invalid_chars(api_key):
-            errors.append("Incorrect API Key value")
+    source_url: Optional[str] = data_dict.get("iar_url")
+    api_key: Optional[str] = data_dict.get("iar_api_key")
 
-        if len(errors):
-            vars["errors"] = errors
-        else:
-            # Everything appears to be in order - time to reconcile
-            context = {"model": model, "session": model.Session}
-            vars["log"] = organisation_helpers.reconcile_local_organisations(
-                context, source_url, api_key
-            )
+    if not source_url or not api_key:
+        errors.append("Both URL and API Key must be set")
+    if source_url and not organisation_helpers.valid_url(source_url):
+        errors.append("Incorrect URL value")
+    if api_key and not organisation_helpers.valid_api_key(api_key):
+        errors.append("Incorrect API Key value")
 
-    return render("admin/organisations.html", extra_vars=vars)
+    if errors:
+        vars["errors"] = errors
+    else:
+        vars["log"] = organisation_helpers.reconcile_local_organisations(
+            {"model": model, "session": model.Session}, source_url, api_key
+        )
 
-
-def register_org_admin_rules(blueprint):
-    blueprint.add_url_rule(
-        "/ckan-admin/organisations", methods=["GET", "POST"], view_func=admin
-    )
-
-
-register_org_admin_rules(ckanadmin_organisations)
+    return tk.render("admin/organisations.html", extra_vars=vars)

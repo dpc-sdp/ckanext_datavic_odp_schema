@@ -1,18 +1,26 @@
+from __future__ import annotations
+
 import re
+from typing import Any, Optional
+
+import ckan.plugins.toolkit as tk
 
 from ckanapi import RemoteCKAN
-from ckan.logic import get_action as _get_action
 
 
-def valid_url(url):
-    return re.search(r"^(http|https)://", url)
+def valid_url(url: str) -> bool:
+    """Check if URL is valid (starts with http or https protocol)"""
+    return bool(re.search(r"^(http|https)://", url))
 
 
-def contains_invalid_chars(value):
-    return re.search(r"[^0-9a-f-]", value)
+def valid_api_key(api_key: str) -> bool:
+    """Check if API key contains invalid characters"""
+    return not bool(re.search(r"[^0-9a-f-]", api_key))
 
 
-def get_remote_organisations(source_url, api_key):
+def get_remote_organisations(
+    source_url: str, api_key
+) -> Optional[list[dict[str, Any]]]:
     remote_ckan = RemoteCKAN(source_url, apikey=api_key)
     try:
         return remote_ckan.call_action(
@@ -24,99 +32,95 @@ def get_remote_organisations(source_url, api_key):
             },
         )
     except Exception as e:
-        return str(e)
+        return
 
 
-def find_new_organisations(remote_orgs, local_orgs):
-    """
-    Compare a list of remote orgs to a list of local orgs to find any new orgs on the remote CKAN instance
-    :param remote_orgs: list of remote organisation dicts
-    :param local_orgs: list of local organisation names
-    :return:
-    """
-    new_organisations = []
-    for remote_org in remote_orgs:
-        if remote_org["name"] not in local_orgs:
-            new_organisations.append(remote_org)
-
-    return new_organisations
+def find_new_organisations(
+    remote_orgs: list[dict[str, Any]], local_orgs: list[str]
+) -> list[dict[str, Any]]:
+    """Compare a list of remote orgs to a list of local orgs to find any
+    new orgs on the remote CKAN instance"""
+    return [org for org in remote_orgs if org["name"] not in local_orgs]
 
 
-def create_new_organisations(new_organisations):
-    """
-    Creates any new organisations that do not exist in the local CKAN instance
-    :param new_organisations: A list of dicts containing organisation details
-    :return:
-    """
-    successes = []
-    errors = []
-    for new_org in new_organisations:
+def create_new_organisations(
+    new_orgs: list[dict[str, Any]]
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Creates any new organisations that do not exist in the local CKAN instance"""
+    successes: list[str] = []
+    errors: list[dict[str, Any]] = []
+
+    for org in new_orgs:
         try:
-            _get_action("organization_create")(
+            tk.get_action("organization_create")(
                 {},
                 {
-                    "id": new_org["id"],
-                    "name": new_org["name"],
-                    "title": new_org["title"],
+                    "id": org["id"],
+                    "name": org["name"],
+                    "title": org["title"],
                 },
             )
-            successes.append(new_org["name"])
         except Exception as e:
-            errors.append({"name": new_org["name"], "error": str(e)})
+            errors.append({"name": org["name"], "error": str(e)})
             continue
+
+        successes.append(org["name"])
 
     return successes, errors
 
 
-def reset_existing_hierarchy(context, organisations):
-    """
-    Resets any existing parent-child relationships for the provided list of organisation ids/names
-    :param context:
-    :param organisations: A list of organisation ids or names
-    :return:
-    """
-    successes = []
-    errors = []
-    for org in organisations:
+def reset_existing_hierarchy(
+    context: dict[str, Any], org_list: list[str]
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Reset any existing hierarchy assignments for the local organisations"""
+    successes: list[str] = []
+    errors: list[dict[str, Any]] = []
+
+    for org_name in org_list:
         try:
-            organisation = _get_action("organization_show")(context, {"id": org})
-            if organisation["groups"]:
-                _get_action("organization_patch")(
-                    context, {"id": organisation["id"], "groups": []}
-                )
-                successes.append(org)
-        except Exception as e:
-            errors.append({"name": org, "error": str(e)})
-            continue
+            organisation = tk.get_action("organization_show")(context, {"id": org_name})
 
-    return successes, errors
-
-
-def assign_parent_organisations(context, remote_orgs):
-    successes = []
-    errors = []
-    for remote_org in remote_orgs:
-        if remote_org["groups"]:
-            try:
-                _get_action("organization_patch")(
-                    context, {"id": remote_org["name"], "groups": remote_org["groups"]}
-                )
-                successes.append(
-                    {"name": remote_org["name"], "groups": remote_org["groups"]}
-                )
-            except Exception as e:
-                errors.append({"name": remote_org["name"], "error": str(e)})
+            if not organisation["groups"]:
                 continue
 
+            tk.get_action("organization_patch")(
+                context, {"id": organisation["id"], "groups": []}
+            )
+        except Exception as e:
+            errors.append({"name": org_name, "error": str(e)})
+            continue
+
+        successes.append(org_name)
+
     return successes, errors
 
 
-def output_header(heading):
-    output = "- - - - - - -\n"
-    output += ">>> %s...\n" % heading
-    output += "- - - - - - -\n"
+def assign_parent_organisations(context: dict[str, Any], remote_orgs):
+    successes: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
 
-    return output
+    for remote_org in remote_orgs:
+        if not remote_org["groups"]:
+            continue
+
+        try:
+            tk.get_action("organization_patch")(
+                context, {"id": remote_org["name"], "groups": remote_org["groups"]}
+            )
+        except Exception as e:
+            errors.append({"name": remote_org["name"], "error": str(e)})
+            continue
+
+        successes.append({"name": remote_org["name"], "groups": remote_org["groups"]})
+    return successes, errors
+
+
+def output_header(heading: str) -> str:
+    return f"""
+    - - - - - - -
+    >>> {heading}...
+    - - - - - - -
+    """
 
 
 def output_successes(
@@ -153,20 +157,20 @@ def reconcile_local_organisations(context, source_url, api_key):
     """
     output = ""
 
-    # Get local organisations & org tree
-    local_orgs = _get_action("organization_list")(context, {})
+    local_orgs: list[str] = tk.get_action("organization_list")(context, {})
+    remote_orgs: Optional[list[dict[str, Any]]] = get_remote_organisations(
+        source_url, api_key
+    )
 
-    remote_orgs = get_remote_organisations(source_url, api_key)
-
-    if not type(remote_orgs) is list:
+    if not remote_orgs:
         return output + "ERROR fetching remote organisations"
 
-    # Find any new organisations on the remote CKAN instance that don't exist locally and create them
-    new_orgs = find_new_organisations(remote_orgs, local_orgs)
+    new_orgs: list[dict[str, Any]] = find_new_organisations(remote_orgs, local_orgs)
 
-    if len(new_orgs):
+    if new_orgs:
         output += output_header("New orgs to create")
         new_orgs_created, errors = create_new_organisations(new_orgs)
+
         if new_orgs_created:
             output += output_successes(new_orgs_created, "created", "New organisations")
         if errors:
@@ -176,7 +180,6 @@ def reconcile_local_organisations(context, source_url, api_key):
 
     output += output_header("Resetting existing organisation hierarchy")
 
-    # Reset any existing hierarchy assignments for the local organisations
     orgs_reset, errors = reset_existing_hierarchy(context, local_orgs)
 
     if orgs_reset:
@@ -186,7 +189,6 @@ def reconcile_local_organisations(context, source_url, api_key):
 
     output += output_header("Assigning parents to local orgs")
 
-    # Assign parent orgs to local orgs where required
     orgs_patched, errors = assign_parent_organisations(context, remote_orgs)
 
     if orgs_patched:

@@ -1,24 +1,28 @@
 import os
-import requests
 import logging
+from typing import Optional
+
+import requests
 
 
 log = logging.getLogger(__name__)
 
 
-def ckan_worker_job_monitor():
-    monitor_url = os.environ.get("MONITOR_URL_JOBWORKER")
+def ckan_worker_job_monitor() -> None:
+    monitor_url: Optional[str] = os.environ.get("MONITOR_URL_JOBWORKER")
+
+    if not monitor_url:
+        return log.error(
+            "The env variable MONITOR_URL_JOBWORKER is not set for CKAN worker job monitor"
+        )
+
     try:
-        if monitor_url:
-            log.info(f"Sending notification for CKAN worker job monitor")
-            requests.get(monitor_url, timeout=10)
-            log.info(f"Successfully sent notification for CKAN worker job monitor")
-        else:
-            log.error(
-                f"The env variable MONITOR_URL_JOBWORKER is not set for CKAN worker job monitor"
-            )
+        log.info("Sending notification for CKAN worker job monitor")
+        requests.get(monitor_url, timeout=10)
     except requests.RequestException as e:
         log.error(
-            f"Failed to send CKAN worker job monitor notification to {monitor_url}"
+            "Failed to send CKAN worker job monitor notification to %s", monitor_url
         )
         log.error(str(e))
+
+    log.info("Successfully sent notification for CKAN worker job monitor")
