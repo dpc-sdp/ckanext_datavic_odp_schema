@@ -24,7 +24,6 @@ class DatavicODPSchema(p.SingletonPlugin):
     # IConfigurer
     def update_config(self, config_):
         tk.add_template_directory(config_, "templates")
-        tk.add_ckan_admin_tab(config_, "odp_admin.organisations", "Org. tools")
 
     # ITemplateHelpers
     def get_helpers(self):
