@@ -24,20 +24,18 @@ def historical(id):
         "for_view": True,
         "auth_user_obj": tk.g.userobj,
     }
-    data_dict = {"id": id}
 
     try:
-        pkg_dict = tk.get_action("package_show")(context, data_dict)
+        pkg_dict = tk.get_action("package_show")(context, {"id": id})
     except tk.ObjectNotFound:
         return tk.abort(404, tk._("Dataset not found"))
     except tk.NotAuthorized:
         return tk.abort(401, tk._("Unauthorized to read package {}").format(id))
 
-    pkg = context["package"]
-    extra_vars = {"pkg_dict": pkg_dict, "pkg": pkg}
-
-    return tk.render("package/read_historical.html", extra_vars)
-
+    return tk.render(
+        "package/read_historical.html",
+        {"pkg_dict": pkg_dict, "pkg": context["package"]},
+    )
 
 
 @odp_dataset.route("/api/action/format_list")

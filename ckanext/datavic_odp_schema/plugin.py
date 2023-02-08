@@ -3,9 +3,9 @@ import logging
 import ckan.plugins as p
 import ckan.plugins.toolkit as tk
 
-import ckanext.datavic_odp_schema.helpers as h
 import ckanext.datavic_odp_schema.cli as cli
 from ckanext.datavic_odp_schema.views import get_blueprints
+from ckanext.datavic_odp_schema.helpers import get_helpers
 
 
 log = logging.getLogger(__name__)
@@ -27,12 +27,7 @@ class DatavicODPSchema(p.SingletonPlugin):
 
     # ITemplateHelpers
     def get_helpers(self):
-        return {
-            "historical_resources_list": h.historical_resources_list,
-            "historical_resources_range": h.historical_resources_range,
-            "is_historical": h.is_historical,
-            "is_other_license": h.is_other_license,
-        }
+        return get_helpers()
 
     # IClick
     def get_commands(self):

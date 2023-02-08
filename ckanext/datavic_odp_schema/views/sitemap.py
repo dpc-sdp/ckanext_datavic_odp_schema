@@ -13,26 +13,26 @@ sitemap = Blueprint("sitemap", __name__)
 @sitemap.route("/sitemap.xml")
 @sitemap.route("/sitemap")
 def index():
-    sitemap_data = '<?xml version="1.0" encoding="UTF-8"?> \n'
-    sitemap_data += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"> \n'
-    host_url: str = tk.request.host_url.replace("http:", "https:")
+    sitemap_data = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    sitemap_data += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    host_url: str = tk.request.host_url.replace("http:", "https:").strip("/")
 
     for package in _get_packages():
         modified_at: str = package.metadata_modified.strftime("%Y-%m-%d")
         sitemap_data += (
             f"<url><loc>{host_url}/dataset/{package.name}</loc>"
-            f"<lastmod>{modified_at}</lastmod></url> \n"
+            f"<lastmod>{modified_at}</lastmod></url>\n"
         )
 
     for organisation in model.Group.all("organization"):
         sitemap_data += (
-            f"<url><loc>{host_url}/organization/{organisation.name}</loc></url> \n"
+            f"<url><loc>{host_url}/organization/{organisation.name}</loc></url>\n"
         )
 
     for group in model.Group.all("group"):
-        sitemap_data += f"<url><loc>{host_url}/group/{group.name}</loc></url> \n"
+        sitemap_data += f"<url><loc>{host_url}/group/{group.name}</loc></url>\n"
 
-    sitemap_data += "</urlset> \n"
+    sitemap_data += "</urlset>"
     response = make_response(sitemap_data)
     response.headers["Content-Type"] = "application/xml"
 
