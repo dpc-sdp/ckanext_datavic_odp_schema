@@ -1,56 +1,51 @@
 import logging
-from operator import itemgetter
 
 from flask import Blueprint, make_response
-import sqlalchemy
 
 import ckan.model as model
-import ckan.plugins.toolkit as toolkit
+import ckan.plugins.toolkit as tk
 
-from ckanext.datavic_odp_theme import helpers
-
-NotFound = toolkit.ObjectNotFound
-NotAuthorized = toolkit.NotAuthorized
-ValidationError = toolkit.ValidationError
-check_access = toolkit.check_access
-get_action = toolkit.get_action
-
-_select = sqlalchemy.sql.select
-_and_ = sqlalchemy.and_
-
-
-render = toolkit.render
-abort = toolkit.abort
 
 log = logging.getLogger(__name__)
+sitemap = Blueprint("sitemap", __name__)
 
-sitemap = Blueprint('sitemap', __name__)
 
-def sitemap_view():
-    sitemap_data = '<?xml version="1.0" encoding="UTF-8"?> \n'
-    sitemap_data += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"> \n'
+@sitemap.route("/sitemap.xml")
+@sitemap.route("/sitemap")
+def index():
+    sitemap_data = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    sitemap_data += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    host_url: str = tk.request.host_url.replace("http:", "https:").strip("/")
 
-    package_table = model.package_table
-    query = _select([package_table.c.name, package_table.c.metadata_modified])
-    query = query.where(_and_(
-        package_table.c.state == 'active',
-        package_table.c.private == False,
-    ))
-    query = query.order_by(package_table.c.name)
+    for package in _get_packages():
+        modified_at: str = package.metadata_modified.strftime("%Y-%m-%d")
+        sitemap_data += (
+            f"<url><loc>{host_url}/dataset/{package.name}</loc>"
+            f"<lastmod>{modified_at}</lastmod></url>\n"
+        )
 
-    for package in query.execute():
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/dataset/' + package.name + '</loc><lastmod>' + package.metadata_modified.strftime('%Y-%m-%d') + '</lastmod></url> \n'
-    for organisation in model.Group.all('organization'):
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/organization/' + organisation.name + '</loc></url> \n'
-    for group in model.Group.all('group'):
-        sitemap_data += '<url><loc>' + toolkit.request.host_url.replace('http:','https:') + '/group/' + group.name + '</loc></url> \n'
-    sitemap_data += '</urlset> \n'
+    for organisation in model.Group.all("organization"):
+        sitemap_data += (
+            f"<url><loc>{host_url}/organization/{organisation.name}</loc></url>\n"
+        )
+
+    for group in model.Group.all("group"):
+        sitemap_data += f"<url><loc>{host_url}/group/{group.name}</loc></url>\n"
+
+    sitemap_data += "</urlset>"
     response = make_response(sitemap_data)
     response.headers["Content-Type"] = "application/xml"
+
     return response
 
-def register_sitemap_plugin_rules(blueprint):
-    blueprint.add_url_rule('/sitemap.xml', view_func=sitemap_view)
-    blueprint.add_url_rule('/sitemap', view_func=sitemap_view)
 
-register_sitemap_plugin_rules(sitemap)
+def _get_packages():
+    package = model.Package
+
+    return (
+        model.Session.query(package.name, package.metadata_modified)
+        .filter(package.state == model.State.ACTIVE)
+        .filter(package.private == False)
+        .order_by(package.name)
+        .all()
+    )
