@@ -26,7 +26,7 @@ def historical_resources_list(resources: list[dict[str, Any]]) -> list[dict[str,
 
 
 def is_historical() -> bool:
-    return tk.g.action == "historical"
+    return tk.get_endpoint()[1] == "historical"
 
 
 def date_str_to_timestamp(date: str) -> Optional[int]:
