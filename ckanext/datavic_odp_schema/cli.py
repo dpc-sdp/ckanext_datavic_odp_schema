@@ -6,6 +6,9 @@ from ckan.plugins.toolkit import enqueue_job
 
 from ckanext.datavic_odp_schema import jobs
 
+__all__ = [
+    "ckan_worker_job_monitor",
+]
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +20,3 @@ def ckan_worker_job_monitor():
         click.secho("CKAN job worker monitor added to worker queue", fg="green")
     except Exception as e:
         log.error(e)
-
-
-def get_commands():
-    return [ckan_worker_job_monitor]
