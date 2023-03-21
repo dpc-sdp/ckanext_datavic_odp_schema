@@ -6,6 +6,10 @@ from ckanext.datavic_odp_schema import jobs
 
 from . import maintain
 
+__all__ = [
+    "datavic_odp",
+]
+
 log = logging.getLogger(__name__)
 
 
@@ -25,7 +29,3 @@ def ckan_worker_job_monitor():
 
 
 datavic_odp.add_command(maintain.maintain)
-
-
-def get_commands():
-    return [datavic_odp]
