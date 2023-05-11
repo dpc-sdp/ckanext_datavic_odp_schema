@@ -8,25 +8,25 @@ dataset_fields:
 - field_name: title
   label: Title
   preset: title
-  form_placeholder: Title
+  form_placeholder: eg. A descriptive title
   required: true
 
 - field_name: name
   label: URL
   preset: dataset_slug
-  form_placeholder: URL
+  form_placeholder: eg. my-dataset
 
 - field_name: notes
   label: Description
   form_snippet: markdown.html
-  form_placeholder: Description
+  form_placeholder: eg. Some useful notes about the data
   required: true
 
 - field_name: tag_string
   label: Keywords
   preset: tag_string_autocomplete
   form_snippet: tags.html
-  form_placeholder: Keywords
+  form_placeholder: eg. economy, mental health, government
   required: true
 
 - field_name: license_id
@@ -37,7 +37,6 @@ dataset_fields:
 
 - field_name: custom_licence_text
   label: License - other
-  form_placeholder: License - other
   form_snippet: text.html
 
 - field_name: owner_org
@@ -51,7 +50,6 @@ dataset_fields:
 
 - field_name: full_metadata_url
   label: Full Metadata URL
-  form_placeholder: Full Metadata URL
   display_group: General
   form_snippet: text.html
 
@@ -84,16 +82,15 @@ resource_fields:
 
 - field_name: name
   label: Name
-  form_placeholder: Name
+  form_placeholder: eg. January 2011 Gold Prices
 
 - field_name: description
   label: Description
   form_snippet: markdown.html
-  form_placeholder: Description
+  form_placeholder: Some useful notes about the data
 
 - field_name: filesize
   label: Filesize
-  form_placeholder: Filesize
 
 - field_name: release_date
   label: Release Date
@@ -109,10 +106,8 @@ resource_fields:
 
 - field_name: data_quality
   label: Data Quality Statement
-  form_placeholder: Data Quality Statement
   form_snippet: textarea.html
 
 - field_name: attribution
   label: Attribution Statement
-  form_placeholder: Attribution Statement
   form_snippet: textarea.html
