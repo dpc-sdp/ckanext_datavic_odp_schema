@@ -19,7 +19,7 @@
         {% endif %}
 
         {% if pkg_dict.metadata_created %}
-          {% set release_date = h.release_date(pkg_dict) %}
+          {% set release_date = h.get_package_release_date(pkg_dict) %}
           <tr>
             <th scope="row" class="dataset-label">{{ _("Published (Metadata Record)") }}</th>
             <td class="dataset-details" property="dct:issued">
