@@ -165,3 +165,25 @@ def _delete_recline_views(res_views: list[ResourceView]):
             continue
         view.delete()
     model.repo.commit()
+
+
+@maintain.command("purge-empty-orgs")
+def purge_empty_organizations():
+    """Purge organizations without any datasets"""
+    result = tk.get_action("organization_list")(
+        {"ignore_auth": True},
+        {"all_fields": True}
+    )
+
+    empty_orgs = [org for org in result if org["package_count"] == 0]
+
+    if not empty_orgs:
+        return click.secho("No empty organization.", fg="green")
+
+    click.secho(f"Found {len(empty_orgs)} empty organization(s). Purging...")
+
+    for org_dict in empty_orgs:
+        tk.get_action("organization_purge")(
+            {"ignore_auth": True},
+            {"id": org_dict["id"]}
+        )
