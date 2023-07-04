@@ -8,14 +8,10 @@ from dateutil.parser import ParserError, parse as parse_date
 
 import ckan.plugins.toolkit as tk
 
-from ckanext.toolbelt.decorators import Collector
 
-
-helper, get_helpers = Collector().split()
 log = logging.getLogger(__name__)
 
 
-@helper
 def historical_resources_list(resources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     resources_history: dict[str, dict[str, Any]] = {}
 
@@ -29,12 +25,10 @@ def historical_resources_list(resources: list[dict[str, Any]]) -> list[dict[str,
     return sorted(resources_history.values(), key=lambda res: res["_key"], reverse=True)
 
 
-@helper
 def is_historical() -> bool:
-    return tk.g.action == "historical"
+    return tk.get_endpoint()[1] == "historical"
 
 
-@helper
 def date_str_to_timestamp(date: str) -> Optional[int]:
     """Parses date string and return it as a timestamp integer"""
     try:
@@ -45,6 +39,5 @@ def date_str_to_timestamp(date: str) -> Optional[int]:
     return int(date_obj.timestamp())
 
 
-@helper
 def is_other_license(pkg_dict: dict[str, Any]) -> bool:
     return pkg_dict.get("license_id") in ["other", "other-open"]
