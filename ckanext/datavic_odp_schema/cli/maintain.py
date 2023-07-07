@@ -4,6 +4,7 @@ import logging
 
 import ckan.model as model
 from ckan.model import Resource, ResourceView
+import ckan.logic as logic
 import ckan.plugins.toolkit as tk
 import click
 from sqlalchemy.exc import SQLAlchemyError
@@ -165,3 +166,33 @@ def _delete_recline_views(res_views: list[ResourceView]):
             continue
         view.delete()
     model.repo.commit()
+
+
+@maintain.command(u"purge-deleted-datasets", short_help=u"Purge deleted datasets by type")
+@click.argument(u"type")
+def purge_deleted_datasets(type: str):
+    """Removes deleted datasets of certain type from db entirely
+
+    Args:
+        type (str): type of datasets to be purged
+    """
+    log.info(f"Searching for deleted datasets of <{type}> type...")
+
+    datasets = model.Session.query(model.Package.id, model.Package.title)\
+        .filter(model.Package.type == type)\
+        .filter(model.Package.state == u"deleted").all()
+
+    if not datasets:
+        click.secho(f"No datasets of <{type}> type were founded", fg="green")
+    else:
+        click.secho(
+            f"{len(datasets)} deleted datasets of <{type}> type were founded.",
+            fg="green"
+        )
+        for dataset in datasets:
+            site_user = logic.get_action(u'get_site_user')({u'ignore_auth': True}, {})
+            context = {u'user': site_user[u'name'], u'ignore_auth': True}
+            logic.get_action(u'dataset_purge')(context, {u'id': dataset[0]})
+            click.secho(f"{dataset[0]} '{dataset[1]}' - purged", fg="yellow")
+
+        click.secho("Done.", fg="green")
