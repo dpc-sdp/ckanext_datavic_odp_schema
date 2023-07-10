@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import logging
 
 import ckan.model as model
+from ckan.model import Resource, ResourceView
 import ckan.logic as logic
 import ckan.plugins.toolkit as tk
 import click
 from sqlalchemy.exc import SQLAlchemyError
+
+import tqdm
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +63,109 @@ def _delete_harvester_source(harvest_source_id: str):
             f"DB Error: Failed to remove ckanext-harvest source: {harvest_source_id}",
             fg="red",
         )
+
+
+@maintain.command("recline-to-datatable")
+@click.option("-d", "--delete", is_flag=True, help="Delete recline_view views")
+def replace_recline_with_datatables(delete: bool):
+    """Replaces recline_view with datatables_view
+    Args:
+        delete (bool): delete existing `recline_view` views
+    """
+    resources = [
+        res
+        for res in model.Session.query(Resource).all()
+        if res.extras.get("datastore_active")
+    ]
+    if not resources:
+        click.secho(
+            "No resources have been found",
+            fg="green"
+        )
+        return click.secho(
+            "NOTE: `datatables_view` works only with resources uploaded to datastore",
+            fg="green"
+        )
+    click.secho(
+        f"{len(resources)} resources have been found. Updating views...",
+        fg="green",
+    )
+    with tqdm.tqdm(resources) as bar:
+        for res in bar:
+            res_views = _get_existing_views(res.id)
+            if not _is_datatable_view_exist(res_views):
+                _create_datatable_view(res.id)
+            if delete:
+                _delete_recline_views(res_views)
+
+
+def _get_existing_views(resource_id: str) -> list[ResourceView]:
+    """Returns a list of resource view entities
+    Args:
+        resource_id (str): resource ID
+    Returns:
+        list[ResourceView]: list of resource views
+    """
+    return (
+        model.Session.query(ResourceView)
+        .filter(ResourceView.resource_id == resource_id)
+        .all()
+    )
+
+
+def _is_datatable_view_exist(res_views: list[ResourceView]) -> bool:
+    """Checks if at least one view from resource views is `datatables_view`
+    Args:
+        res_views (list[ResourceView]): list of resource views
+    Returns:
+        bool: True if `datatables_view` view exists
+    """
+    for view in res_views:
+        if view.view_type == "datatables_view":
+            return True
+    return False
+
+
+def _create_datatable_view(resource_id: str):
+    """Creates a datatable view for resource
+    Args:
+        resource_id (str): resource ID
+    """
+    tk.get_action("resource_view_create")(
+        {"ignore_auth": True},
+        {
+            "resource_id": resource_id,
+            "show_fields": _get_resource_fields(resource_id),
+            "title": "Datatable",
+            "view_type": "datatables_view",
+        },
+    )
+
+
+def _get_resource_fields(resource_id: str) -> list[str]:
+    """Fetches list of resource fields from datastore
+    Args:
+        resource_id (str): resource ID
+    Returns:
+        list[str]: list of resource fields
+    """
+    search = tk.get_action("datastore_search")
+    ctx = {"ignore_auth": True}
+    data_dict = {
+        "resource_id": resource_id,
+        "limit": 0,
+        "include_total": False,
+    }
+    fields = [field for field in search(ctx, data_dict)["fields"]]
+    return [f["id"] for f in fields]
+
+
+def _delete_recline_views(res_views: list[ResourceView]):
+    for view in res_views:
+        if view.view_type != "recline_view":
+            continue
+        view.delete()
+    model.repo.commit()
 
 
 @maintain.command(u"purge-deleted-datasets", short_help=u"Purge deleted datasets by type")
