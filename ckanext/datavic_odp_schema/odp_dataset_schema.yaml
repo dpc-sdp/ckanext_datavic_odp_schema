@@ -53,18 +53,13 @@ dataset_fields:
   display_group: General
   form_snippet: text.html
 
-- field_name: enable_dtv
-  label: Enable Digital Twin Preview
+- field_name: nominated_view_id
   display_snippet: null
-  required: true
-  preset: select
-  choices:
-    - value: false
-      label: "No"
-    - value: true
-      label: "Yes"
-  validators: boolean_validator
-  output_validators: boolean_validator
+  form_snippet: vic_hidden.html
+
+- field_name: nominated_view_resource
+  display_snippet: null
+  form_snippet: vic_hidden.html
 
 resource_fields:
 
