@@ -149,14 +149,19 @@ def _get_resource_fields(resource_id: str) -> list[str]:
     Returns:
         list[str]: list of resource fields
     """
-    search = tk.get_action("datastore_search")
     ctx = {"ignore_auth": True}
     data_dict = {
         "resource_id": resource_id,
         "limit": 0,
         "include_total": False,
     }
-    fields = [field for field in search(ctx, data_dict)["fields"]]
+    try:
+        search = tk.get_action("datastore_search")(ctx, data_dict)
+    except tk.ObjectNotFound:
+        click.echo(f"Resource {resource_id} orphaned")
+        return []
+
+    fields = [field for field in search["fields"]]
     return [f["id"] for f in fields]
 
 
