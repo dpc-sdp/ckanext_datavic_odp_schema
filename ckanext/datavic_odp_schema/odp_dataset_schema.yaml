@@ -110,6 +110,7 @@ resource_fields:
 - field_name: data_quality
   label: Data Quality Statement
   form_snippet: textarea.html
+  display_snippet: markdown.html
 
 - field_name: attribution
   label: Attribution Statement

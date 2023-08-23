@@ -12,19 +12,6 @@ import ckan.plugins.toolkit as tk
 log = logging.getLogger(__name__)
 
 
-def historical_resources_list(resources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    resources_history: dict[str, dict[str, Any]] = {}
-
-    for idx, resource in enumerate(resources):
-        resource["_key"] = _key = date_str_to_timestamp(
-            resource.get("period_start", "")
-        ) or int(f"9999999999{idx}")
-
-        resources_history[str(_key)] = resource
-
-    return sorted(resources_history.values(), key=lambda res: res["_key"], reverse=True)
-
-
 def group_resources_by_temporal_range(
     resource_list: list[dict[str, Any]]
 ) -> list[list[dict[str, Any]]]:
