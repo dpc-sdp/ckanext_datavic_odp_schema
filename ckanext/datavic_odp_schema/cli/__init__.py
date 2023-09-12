@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import click
 from ckan.plugins.toolkit import enqueue_job
