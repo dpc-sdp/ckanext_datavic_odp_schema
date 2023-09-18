@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import logging
 
-import ckan.model as model
-from ckan.model import Resource, ResourceView
-import ckan.logic as logic
-import ckan.plugins.toolkit as tk
 import click
+import tqdm
 from sqlalchemy.exc import SQLAlchemyError
 
-import tqdm
+import ckan.logic as logic
+import ckan.model as model
+import ckan.plugins.toolkit as tk
+from ckan.model import Resource, ResourceView
+
+from ckanext.datastore.backend import get_all_resources_ids_in_datastore
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +37,9 @@ def ckan_drop_harvester_tables():
 
     try:
         model.Session.commit()
-        click.secho(f"ckanext-harvest table removed successfully", fg="green")
+        click.secho("ckanext-harvest table removed successfully", fg="green")
     except SQLAlchemyError:
-        click.secho(f"DB Error: Failed to drop ckanext-harvest tables", fg="red")
+        click.secho("DB Error: Failed to drop ckanext-harvest tables", fg="red")
         model.Session.rollback()
 
 
@@ -116,13 +118,10 @@ def replace_recline_with_datatables(delete: bool):
         if res.extras.get("datastore_active")
     ]
     if not resources:
-        click.secho(
-            "No resources have been found",
-            fg="green"
-        )
+        click.secho("No resources have been found", fg="green")
         return click.secho(
             "NOTE: `datatables_view` works only with resources uploaded to datastore",
-            fg="green"
+            fg="green",
         )
     click.secho(
         f"{len(resources)} resources have been found. Updating views...",
@@ -211,8 +210,8 @@ def _delete_recline_views(res_views: list[ResourceView]):
     model.repo.commit()
 
 
-@maintain.command(u"purge-deleted-datasets", short_help=u"Purge deleted datasets by type")
-@click.argument(u"type")
+@maintain.command("purge-deleted-datasets", short_help="Purge deleted datasets by type")
+@click.argument("type")
 def purge_deleted_datasets(type: str):
     """Removes deleted datasets of certain type from db entirely
 
@@ -221,21 +220,24 @@ def purge_deleted_datasets(type: str):
     """
     log.info(f"Searching for deleted datasets of <{type}> type...")
 
-    datasets = model.Session.query(model.Package.id, model.Package.title)\
-        .filter(model.Package.type == type)\
-        .filter(model.Package.state == u"deleted").all()
+    datasets = (
+        model.Session.query(model.Package.id, model.Package.title)
+        .filter(model.Package.type == type)
+        .filter(model.Package.state == "deleted")
+        .all()
+    )
 
     if not datasets:
         click.secho(f"No datasets of <{type}> type were founded", fg="green")
     else:
         click.secho(
             f"{len(datasets)} deleted datasets of <{type}> type were founded.",
-            fg="green"
+            fg="green",
         )
         for dataset in datasets:
-            site_user = logic.get_action(u'get_site_user')({u'ignore_auth': True}, {})
-            context = {u'user': site_user[u'name'], u'ignore_auth': True}
-            logic.get_action(u'dataset_purge')(context, {u'id': dataset[0]})
+            site_user = logic.get_action("get_site_user")({"ignore_auth": True}, {})
+            context = {"user": site_user["name"], "ignore_auth": True}
+            logic.get_action("dataset_purge")(context, {"id": dataset[0]})
             click.secho(f"{dataset[0]} '{dataset[1]}' - purged", fg="yellow")
 
         click.secho("Done.", fg="green")
@@ -245,8 +247,7 @@ def purge_deleted_datasets(type: str):
 def purge_empty_organizations():
     """Purge organizations without any datasets"""
     result = tk.get_action("organization_list")(
-        {"ignore_auth": True},
-        {"all_fields": True}
+        {"ignore_auth": True}, {"all_fields": True}
     )
 
     empty_orgs = [org for org in result if org["package_count"] == 0]
@@ -258,6 +259,93 @@ def purge_empty_organizations():
 
     for org_dict in empty_orgs:
         tk.get_action("organization_purge")(
-            {"ignore_auth": True},
-            {"id": org_dict["id"]}
+            {"ignore_auth": True}, {"id": org_dict["id"]}
         )
+
+
+@maintain.command("get-broken-recline")
+def identify_resources_with_broken_recline():
+    """Return a list of resources with a broken recline_view"""
+
+    query = (
+        model.Session.query(model.Resource)
+        .join(
+            model.ResourceView,
+            model.ResourceView.resource_id == model.Resource.id,
+        )
+        .filter(model.ResourceView.view_type.in_(["datatables_view", "recline_view"]))
+    )
+
+    resources = [resource for resource in query.all()]
+
+    if not resources:
+        return click.secho("No resources with inactive datastore")
+
+    for resource in resources:
+        if resource.extras.get("datastore_active"):
+            continue
+
+        res_url = tk.url_for(
+            "resource.read",
+            id=resource.package_id,
+            resource_id=resource.id,
+            _external=True,
+        )
+        click.secho(
+            f"Resource {res_url} has a table view but datastore is inactive",
+            fg="green",
+        )
+
+
+@maintain.command
+def delete_datastore_tables_with_no_related_resource():
+    """Delete from Datastore all tables that do not have a related resource."""
+    res_ids = _get_datastore_tables_with_no_related_resource()
+
+    if not res_ids:
+        click.secho(
+            "Nothing to delete. "
+            "All Datastore tables are associated with an existing resource",
+            fg="green",
+        )
+        return
+
+    for res_id in res_ids:
+        try:
+            click.secho(f"Deleting Datastore table with ID {res_id}", fg="green")
+            tk.get_action("datastore_delete")(
+                {"ignore_auth": True}, {"resource_id": res_id, "force": True}
+            )
+        except tk.ObjectNotFound:
+            continue
+
+
+@maintain.command
+def list_datastore_tables_with_no_related_resource():
+    """Show all Datastore tables that do not have a related resource."""
+    res_ids = _get_datastore_tables_with_no_related_resource()
+
+    if not res_ids:
+        click.secho(
+            "All Datastore tables are associated with an existing resource", fg="green"
+        )
+        return
+
+    for res_id in res_ids:
+        click.secho(f"{res_id}", fg="red")
+    click.secho(
+        f"Total number of Datastore tables that don't have a related resource is "
+        f"{len(res_ids)}",
+        fg="green",
+    )
+
+
+def _get_datastore_tables_with_no_related_resource() -> list[str]:
+    """Return a list of Datastore table names that are not associated with
+    the currently active resource."""
+    res_ids = []
+    for res_id in get_all_resources_ids_in_datastore():
+        res = model.Resource.get(res_id)
+        if not res or res.state == model.State.DELETED:
+            res_ids.append(res_id)
+    return res_ids
