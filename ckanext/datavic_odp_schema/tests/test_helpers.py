@@ -43,26 +43,6 @@ class TestHelpers:
     def test_resource_formats_list_no_resources(self):
         assert not tk.h.format_list()
 
-    @pytest.mark.usefixtures("clean_db")
-    def test_historical_resources_list(self, dataset_factory, resource_data):
-        dataset = dataset_factory(
-            resources=[
-                resource_data(),
-                resource_data(format="XML", period_start="2023-01-05"),
-                resource_data(format="TTF", period_start="2023-01-05"),
-                resource_data(format="ZIP", period_start="2023-01-12"),
-            ]
-        )
-
-        resources = tk.h.historical_resources_list(dataset["resources"])
-
-        # resource history is reversed from oldest to newest
-        # resources without `period_start` will be first, because they timestamp starts from `9999999999`...
-        assert resources[0]["_key"] == 99999999990
-        assert resources[1]["format"] == "ZIP"
-        assert resources[2]["format"] == "TTF"
-        assert len(resources) == 3
-
     def test_date_str_to_timestamp(self):
         """Date parser func shouldn't throw exceptions"""
         assert date_str_to_timestamp("2023-01-05")

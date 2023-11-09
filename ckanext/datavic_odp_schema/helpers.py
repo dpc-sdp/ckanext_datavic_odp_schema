@@ -12,17 +12,45 @@ import ckan.plugins.toolkit as tk
 log = logging.getLogger(__name__)
 
 
-def historical_resources_list(resources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    resources_history: dict[str, dict[str, Any]] = {}
+def group_resources_by_temporal_range(
+    resource_list: list[dict[str, Any]]
+) -> list[list[dict[str, Any]]]:
+    """Group resources by period_start/period_end dates for a historical
+    feature."""
 
-    for idx, resource in enumerate(resources):
-        resource["_key"] = _key = date_str_to_timestamp(
-            resource.get("period_start", "")
-        ) or int(f"9999999999{idx}")
+    def parse_date(date_str: str | None) -> datetime:
+        return (
+            datetime.strptime(date_str, "%Y-%m-%d") if date_str else datetime.min
+        )
 
-        resources_history[str(_key)] = resource
+    grouped_resources: dict[
+        tuple[datetime], list[dict[str, Any]]
+    ] = {}
 
-    return sorted(resources_history.values(), key=lambda res: res["_key"], reverse=True)
+    for resource in resource_list:
+        end_date = parse_date(resource.get("period_end"))
+
+        grouped_resources.setdefault((end_date,), [])
+        grouped_resources[(end_date,)].append(resource)
+
+
+    sorted_grouped_resources = dict(
+        sorted(
+            grouped_resources.items(),
+            reverse=True,
+            key=lambda x: x[0],
+        )
+    )
+
+    return [res_group for res_group in sorted_grouped_resources.values()]
+
+
+def ungroup_temporal_resources(
+    resource_groups: list[list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    return [
+        resource for res_group in resource_groups for resource in res_group
+    ]
 
 
 def is_historical() -> bool:
