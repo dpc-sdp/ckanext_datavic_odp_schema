@@ -62,11 +62,11 @@ dataset_fields:
   required: true
   preset: select
   choices:
-    - value: false
-      label: "No"
     - value: true
       label: "Yes"
-  validators: boolean_validator
+    - value: false
+      label: "No"
+  validators: default(true) boolean_validator
   output_validators: boolean_validator
 
 - field_name: nominated_view_id
