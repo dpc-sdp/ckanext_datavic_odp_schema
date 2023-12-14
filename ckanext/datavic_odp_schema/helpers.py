@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 from datetime import datetime
+import ckan.model as model
+
 
 from dateutil.parser import ParserError, parse as parse_date
 
@@ -69,3 +71,10 @@ def date_str_to_timestamp(date: str) -> Optional[int]:
 
 def is_other_license(pkg_dict: dict[str, Any]) -> bool:
     return pkg_dict.get("license_id") in ["other", "other-open"]
+
+
+def category_list(self):
+    group_list = []
+    for group in model.Group.all('group'):
+        group_list.append({'value': group.id, 'label': group.title})
+    return group_list
