@@ -32,6 +32,13 @@ dataset_fields:
   form_placeholder: eg. economy, mental health, government
   required: true
 
+- field_name: category
+  label: Category
+  preset: select
+  choices_helper: category_list
+  required: false
+  form_include_blank_choice: true
+
 - field_name: license_id
   label: License
   form_snippet: license.html
