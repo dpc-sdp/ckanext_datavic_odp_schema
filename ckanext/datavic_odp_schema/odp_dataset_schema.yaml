@@ -110,6 +110,12 @@ resource_fields:
   label: Description
   form_snippet: markdown.html
   form_placeholder: Some useful notes about the data
+  
+- field_name: format
+  label: Format
+  preset: resource_format_autocomplete
+  form_snippet: tags.html
+  validators: if_empty_guess_format not_empty clean_format unicode_safe
 
 - field_name: filesize
   label: Filesize
