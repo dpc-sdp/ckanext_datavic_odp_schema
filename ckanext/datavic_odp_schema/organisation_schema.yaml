@@ -1,0 +1,33 @@
+scheming_version: 2
+organization_type: organization
+
+fields:
+  - field_name: title
+    label: Name
+    validators: ignore_missing unicode_safe
+    form_snippet: text.html
+    classes: control-full
+    form_attrs:
+      data-module: slug-preview-target
+    form_placeholder: My Organization
+
+  - field_name: name
+    label: URL
+    validators: not_empty unicode_safe name_validator group_name_validator
+    form_snippet: slug.html
+    form_placeholder: my-organization
+
+  - field_name: description
+    label: Description
+    form_snippet: markdown.html
+    form_placeholder: A little information about my organisation...
+
+  - field_name: url
+    label: Image URL
+    form_snippet: vic_organization_upload.html
+    form_placeholder: http://example.com/my-image.jpg
+    help_text: Upload your organization's logo or image (JPEG, PNG, GIF, max 10MB) to enhance brand visibility on the organization's about page and dataset list.
+
+  - field_name: parent
+    label: Parent
+    form_snippet: org_hierarchy.html
