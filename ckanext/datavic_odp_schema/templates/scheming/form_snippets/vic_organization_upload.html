@@ -1,11 +1,12 @@
-{#} alterations: add hrlp text {#}
+{#} alterations: add help text {#}
 
 {% import 'macros/vic_image_upload.html' as form %}
 
-{% asset 'ckanext-datavicmain/datavicmain-image-upload-helptext' %}
-
 {% set is_upload = data.image_url and not data.image_url.startswith('http') %}
 {% set is_url = data.image_url and data.image_url.startswith('http') %}
+{% set help_text = "Upload your organization's logo or image (JPG, JPEG, GIF, PNG, BMP, SVG, max "
+                    ~ h.datavic_max_image_size() ~"MB) to enhance brand visibility on the organization's
+                    about page and dataset list." %}
 
 {{ form.image_upload(
     data,
@@ -13,6 +14,6 @@
     is_upload_enabled=h.uploads_enabled(),
     is_url=is_url,
     is_upload=is_upload,
-    help_text=field.help_text
+    help_text=help_text
     )
 }}
