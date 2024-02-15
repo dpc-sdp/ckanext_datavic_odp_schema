@@ -25,8 +25,8 @@ fields:
   - field_name: url
     label: Image URL
     form_snippet: vic_organization_upload.html
+    validators: datavic_organization_upload scheming_required
     form_placeholder: http://example.com/my-image.jpg
-    help_text: Upload your organization's logo or image (JPEG, PNG, GIF, max 10MB) to enhance brand visibility on the organization's about page and dataset list.
 
   - field_name: parent
     label: Parent
