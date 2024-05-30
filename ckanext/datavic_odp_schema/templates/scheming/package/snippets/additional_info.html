@@ -108,8 +108,15 @@
               <a href="{{ pkg_dict.full_metadata_url }}" target="_blank" rel="nofollow">{{ pkg_dict.full_metadata_url }}</a>
             {% else %}
               {{ pkg_dict.full_metadata_url }}
-          {% endif %}
+            {% endif %}
             </td>
+          </tr>
+        {% endif %}
+
+        {% if g.userobj %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Update Frequency") }}</th>
+            <td class="dataset-details">{{ pkg_dict.update_frequency|capitalize }}</td>
           </tr>
         {% endif %}
       {% endblock %}
