@@ -387,3 +387,18 @@ def identify_resources_with_broken_recline():
             f"Resource {res_url} has a table view but datastore is inactive",
             fg="green",
         )
+
+
+@maintain.command("make-datatables-view-prioritized")
+def make_datatables_view_prioritized():
+    """Check if there are resources that have recline_view and datatables_view and
+    reorder them so that datatables_view is first."""
+    resources = model.Session.query(Resource).all()
+    number_reordered = 0
+    for resource in tqdm.tqdm(resources):
+        result = tk.get_action("datavic_datatables_view_prioritize")(
+            {"ignore_auth": True}, {"resource_id": resource.id}
+        )
+        if result.get("updated"):
+            number_reordered += 1
+    click.secho(f"Reordered {number_reordered} resources", fg="green")
