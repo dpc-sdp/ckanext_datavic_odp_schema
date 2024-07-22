@@ -1,4 +1,8 @@
-{#} alterations: add custom_fields block, that scheming doesn't have {#}
+{#
+    alterations:
+    - add custom_fields block, that scheming doesn't have
+    - update errors dict
+#}
 
 {% import 'macros/form.html' as form %}
 {% if group_type is not defined %}
@@ -8,6 +12,8 @@
 {% block errors %}
   {%- if errors -%}
     {%- set schema = h.scheming_get_dataset_schema(dataset_type) -%}
+    {% set errors = h.datavic_update_org_error_dict(errors) %}
+
     {%- snippet 'scheming/snippets/errors.html',
       errors=errors, fields=schema.dataset_fields,
       entity_type='dataset', object_type=dataset_type -%}

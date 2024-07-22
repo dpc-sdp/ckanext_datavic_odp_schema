@@ -1,4 +1,4 @@
-{#} alterations: add help text {#}
+{# alterations: add help text #}
 
 {% from 'macros/form/input.html' import input %}
 {% from 'macros/form/checkbox.html' import checkbox %}
@@ -46,10 +46,10 @@ Example
     {% endif %}
 
 
-  {% call input(field_url, label=url_label, id='field-image-url', type='url', placeholder=placeholder, value=data.get(field_url), error=errors.get(field_url), classes=['control-full']) %}
+  {% call input(field_url, label=url_label, id='field-image-url', type='url', placeholder=placeholder, value=data.get(field_url), error=errors.get(upload_label), classes=['control-full']) %}
     <div class="info-block">
       <i class="fa fa-info-circle"></i>
-      {{ help_text }}
+      {{ help_text | safe }}
     </div>
   {% endcall %}
 
