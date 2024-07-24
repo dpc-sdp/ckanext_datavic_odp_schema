@@ -25,7 +25,7 @@ fields:
   - field_name: url
     label: Image URL
     form_snippet: vic_organization_upload.html
-    validators: datavic_organization_upload scheming_required
+    validators: scheming_required
     form_placeholder: http://example.com/my-image.jpg
 
   - field_name: parent
