@@ -58,7 +58,7 @@ Example
     {% call input(field_upload, label=upload_label, id='field-image-upload', type='file', placeholder='', value='', error='', classes=['control-full']) %}
       <div class="info-block">
         <i class="fa fa-info-circle"></i>
-        {{ help_text }}
+        {{ help_text | safe }}
       </div>
     {% endcall %}
     {% if is_upload %}
