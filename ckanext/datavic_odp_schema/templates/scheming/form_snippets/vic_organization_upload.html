@@ -1,0 +1,19 @@
+{# alterations: add help text #}
+
+{% import 'macros/vic_image_upload.html' as form %}
+
+{% set is_upload = data.image_url and not data.image_url.startswith('http') %}
+{% set is_url = data.image_url and data.image_url.startswith('http') %}
+{% set help_text = "Upload your organisation’s " ~ "<a href='https://www.vic.gov.au/brand-victoria-using-our-logos'>approved Brand Victoria logo</a>" ~ ". This will be displayed on your organisation’s page on the VPS Data Directory and DataVic. Logo must be no larger than " ~ h.datavic_max_image_size() ~ "MB and in one of the following formats: JPG, JPEG, GIF, PNG, BMP, SVG." %}
+
+{{ form.image_upload(
+    data,
+    errors,
+    is_upload_enabled=h.uploads_enabled(),
+    is_url=is_url,
+    is_upload=is_upload,
+    help_text=help_text,
+    upload_label=_('Logo'),
+    url_label=_('Logo'),
+    )
+}}

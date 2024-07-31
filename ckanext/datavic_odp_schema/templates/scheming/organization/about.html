@@ -1,0 +1,13 @@
+{% ckan_extends %}
+
+{% block primary_content_inner %}
+    <h1>{{ group_dict.display_name }}</h1>
+
+    {% if group_dict.description %}
+      {{ h.render_markdown(group_dict.description) }}
+    {% endif %}
+
+    <div id="organization-tree">
+        {% snippet 'organization/snippets/organization_tree.html', top_nodes=[h.group_tree_section(id_=group_dict.id, type_=group_dict.type)], use_longnames=True %}
+    </div>
+{% endblock %}
