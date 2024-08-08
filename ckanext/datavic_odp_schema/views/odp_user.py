@@ -2,11 +2,10 @@ import logging
 
 from flask import Blueprint
 
+from ckan import plugins
 import ckan.lib.captcha as captcha
 import ckan.plugins.toolkit as tk
 import ckan.views.user as user
-
-from ckan.common import _, request
 
 
 log = logging.getLogger(__name__)
@@ -17,14 +16,19 @@ recaptcha_actions = ["login", "request_reset"]
 
 @odp_user.before_request
 def before_request() -> None:
-    controller, action = tk.get_endpoint()
-    if request.method == "POST" and action in recaptcha_actions:
+    _, action = tk.get_endpoint()
+
+    # Skip recaptcha check if 2FA is enabled, it will be checked with ckanext-auth
+    if plugins.plugin_loaded("auth") and tk.h.is_2fa_enabled():
+        return;
+
+    if tk.request.method == "POST" and action in recaptcha_actions:
         try:
-            captcha.check_recaptcha(request)
+            captcha.check_recaptcha(tk.request)
         except captcha.CaptchaError:
-            error_msg = _(u'Bad Captcha. Please try again.')
+            error_msg = tk._('Bad Captcha. Please try again.')
             tk.h.flash_error(error_msg)
-            return tk.redirect_to(tk.request.url)
+            return tk.h.redirect_to(tk.request.url)
 
 
 def register_odp_user_plugin_rules(blueprint):
