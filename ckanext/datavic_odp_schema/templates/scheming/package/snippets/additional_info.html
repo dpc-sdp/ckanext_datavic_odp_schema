@@ -45,6 +45,14 @@
           </tr>
         {% endif %}
 
+        {% if pkg_dict.category %}
+          {% set category = h.get_group(pkg_dict.category) %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _('Category') }}</th>
+            <td class="dataset-details">{{ category.display_name }}</td>
+          </tr>
+        {% endif %}
+
         {% if not h.is_other_license(pkg_dict) %}
           <tr>
             <th scope="row" class="dataset-label">{{ _('License') }}</th>
@@ -79,27 +87,6 @@
           {% endif %}
         {% endif %}
 
-        {% if pkg_dict.groups %}
-          <tr>
-            <th scope="row" class="dataset-label">{{ _('Category') }}</th>
-            <td class="dataset-details" property="dc:contributor">
-              {% if pkg_dict.groups|length == 1 %}
-                {% for group in pkg_dict.groups %}
-                  <a href="{{ h.url_for('dataset.search', groups=group.name) }}">{{ group.display_name }}</a>
-                {% endfor %}
-              {% else %}
-                <ul>
-                  {% for group in pkg_dict.groups %}
-                    <li>
-                      <a href="{{ h.url_for('dataset.search', groups=group.name) }}">{{ group.display_name }}</a>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </td>
-          </tr>
-        {% endif %}
-
         {% if pkg_dict.full_metadata_url %}
           <tr>
             <th scope="row" class="dataset-label">{{ _('Full metadata URL') }}</th>
@@ -108,8 +95,15 @@
               <a href="{{ pkg_dict.full_metadata_url }}" target="_blank" rel="nofollow">{{ pkg_dict.full_metadata_url }}</a>
             {% else %}
               {{ pkg_dict.full_metadata_url }}
-          {% endif %}
+            {% endif %}
             </td>
+          </tr>
+        {% endif %}
+
+        {% if g.userobj %}
+          <tr>
+            <th scope="row" class="dataset-label">{{ _("Update Frequency") }}</th>
+            <td class="dataset-details">{{ pkg_dict.update_frequency|capitalize }}</td>
           </tr>
         {% endif %}
       {% endblock %}

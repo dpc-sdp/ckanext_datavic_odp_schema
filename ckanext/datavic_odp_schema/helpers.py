@@ -78,3 +78,16 @@ def category_list(self):
     for group in model.Group.all('group'):
         group_list.append({'value': group.id, 'label': group.title})
     return group_list
+
+
+def get_group(group: Optional[str] = None,
+              include_datasets: bool = False) -> dict[str, Any]:
+    if group is None:
+        return {}
+    try:
+        return tk.get_action('group_show')(
+            {},
+            {'id': group, 'include_datasets': include_datasets}
+        )
+    except (tk.NotFound, tk.ValidationError, tk.NotAuthorized):
+        return {}
