@@ -171,3 +171,9 @@ resource_fields:
 - field_name: attribution
   label: Attribution Statement
   form_snippet: textarea.html
+
+- field_name: attributes
+  label: Attributes
+  form_snippet: vic_hidden.html
+  display_snippet: null
+  validators: ignore_empty
