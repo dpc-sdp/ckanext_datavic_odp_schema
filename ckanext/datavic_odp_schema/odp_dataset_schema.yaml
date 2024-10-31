@@ -150,6 +150,7 @@ resource_fields:
 
 - field_name: filesize
   label: Filesize
+  display_snippet: filesize.html
 
 - field_name: release_date
   label: Release Date
