@@ -111,6 +111,7 @@ resource_fields:
 
 - field_name: filesize
   label: Filesize
+  display_snippet: filesize.html
 
 - field_name: release_date
   label: Release Date
@@ -132,3 +133,9 @@ resource_fields:
 - field_name: attribution
   label: Attribution Statement
   form_snippet: textarea.html
+
+- field_name: attributes
+  label: Attributes
+  form_snippet: vic_hidden.html
+  display_snippet: null
+  validators: ignore_empty
