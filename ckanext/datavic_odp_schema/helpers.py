@@ -80,6 +80,19 @@ def category_list(self) -> list[dict[str, Any]]:
     return group_list
 
 
+def get_group(group: Optional[str] = None,
+              include_datasets: bool = False) -> dict[str, Any]:
+    if group is None:
+        return {}
+    try:
+        return tk.get_action('group_show')(
+            {},
+            {'id': group, 'include_datasets': include_datasets}
+        )
+    except (tk.NotFound, tk.ValidationError, tk.NotAuthorized):
+        return {}
+
+
 def localized_filesize(size_bytes: int) -> str:
     """Returns a localized unicode representation of a number in bytes, MB
     etc.
