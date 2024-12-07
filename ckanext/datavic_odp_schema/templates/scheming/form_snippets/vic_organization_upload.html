@@ -4,7 +4,7 @@
 
 {% set is_upload = data.image_url and not data.image_url.startswith('http') %}
 {% set is_url = data.image_url and data.image_url.startswith('http') %}
-{% set help_text = "Upload your organisation’s " ~ "<a href='https://www.vic.gov.au/brand-victoria-using-our-logos'>approved Brand Victoria logo</a>" ~ ". This will be displayed on your organisation’s page on the VPS Data Directory and DataVic. Logo must be no larger than " ~ h.datavic_max_image_size() ~ "MB and in one of the following formats: JPG, JPEG, GIF, PNG, BMP, SVG." %}
+{% set help_text = "Upload your organisation’s " ~ "<a href='https://www.vic.gov.au/brand-victoria-using-our-logos'>approved Brand Victoria logo</a>" ~ ". This will be displayed on your organisation’s page on the VPS Data Directory and DataVic. Logo must be no larger than " ~ h.datavic_max_image_size() ~ "MB and in one of the following formats: JPG, JPEG, GIF, PNG, WEBP." %}
 
 {{ form.image_upload(
     data,
