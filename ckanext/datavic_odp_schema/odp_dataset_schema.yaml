@@ -148,6 +148,7 @@ resource_fields:
   form_snippet: tags.html
   validators: if_empty_guess_format not_empty clean_format unicode_safe
 
+- field_name: filesize
   label: File Size
   display_snippet: filesize.html
 
