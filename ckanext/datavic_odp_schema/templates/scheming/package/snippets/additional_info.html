@@ -100,12 +100,10 @@
           </tr>
         {% endif %}
 
-        {% if g.userobj %}
-          <tr>
-            <th scope="row" class="dataset-label">{{ _("Update Frequency") }}</th>
-            <td class="dataset-details">{{ pkg_dict.update_frequency|capitalize }}</td>
-          </tr>
-        {% endif %}
+        <tr>
+          <th scope="row" class="dataset-label">{{ _("Update Frequency") }}</th>
+          <td class="dataset-details">{{ pkg_dict.update_frequency|capitalize }}</td>
+        </tr>
       {% endblock %}
     </tbody>
   </table>
