@@ -45,11 +45,19 @@
           </tr>
         {% endif %}
 
-        {% if pkg_dict.category %}
-          {% set category = h.get_group(pkg_dict.category) %}
+        {# Display dataset categories #}
+        {% if pkg_dict.groups %}
           <tr>
             <th scope="row" class="dataset-label">{{ _('Category') }}</th>
-            <td class="dataset-details">{{ category.display_name }}</td>
+            <td class="dataset-details">
+              <ul>
+                {% for group in pkg_dict.groups %}
+                  <li>
+                      <a href="{% url_for 'dataset.search', groups=group.name %}">{{ group.display_name }}</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </td>
           </tr>
         {% endif %}
 
