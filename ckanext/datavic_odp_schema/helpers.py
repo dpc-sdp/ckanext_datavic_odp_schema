@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+import math
+
 from datetime import datetime
-import ckan.model as model
-
-
 from dateutil.parser import ParserError, parse as parse_date
+from typing import Any, Optional
 
+import ckan.model as model
 import ckan.plugins.toolkit as tk
 
 
@@ -22,7 +22,8 @@ def group_resources_by_temporal_range(
 
     def parse_date(date_str: str | None) -> datetime:
         return (
-            datetime.strptime(date_str, "%Y-%m-%d") if date_str else datetime.min
+            datetime.strptime(date_str, "%Y-%m-%d")
+            if date_str else datetime.min
         )
 
     grouped_resources: dict[
@@ -34,7 +35,6 @@ def group_resources_by_temporal_range(
 
         grouped_resources.setdefault((end_date,), [])
         grouped_resources[(end_date,)].append(resource)
-
 
     sorted_grouped_resources = dict(
         sorted(
@@ -64,7 +64,7 @@ def date_str_to_timestamp(date: str) -> Optional[int]:
     try:
         date_obj: datetime = parse_date(date)
     except (ParserError, TypeError) as e:
-        return log.error("Eror parsing date from %s", date)
+        return log.error("Error parsing date from %s", date)
 
     return int(date_obj.timestamp())
 
@@ -73,8 +73,46 @@ def is_other_license(pkg_dict: dict[str, Any]) -> bool:
     return pkg_dict.get("license_id") in ["other", "other-open"]
 
 
-def category_list(self):
+def category_list(self) -> list[dict[str, Any]]:
     group_list = []
     for group in model.Group.all('group'):
         group_list.append({'value': group.id, 'label': group.title})
     return group_list
+
+
+def get_group(group: Optional[str] = None,
+              include_datasets: bool = False) -> dict[str, Any]:
+    if group is None:
+        return {}
+    try:
+        return tk.get_action('group_show')(
+            {},
+            {'id': group, 'include_datasets': include_datasets}
+        )
+    except (tk.NotFound, tk.ValidationError, tk.NotAuthorized):
+        return {}
+
+
+def localized_filesize(size_bytes: int) -> str:
+    """Returns a localized unicode representation of a number in bytes, MB
+    etc.
+
+    It's  similar  to  CKAN's  original `localised_filesize`,  but  uses  MB/KB
+    instead of MiB/KiB.  Additionally, it rounds up to 1.0KB  any value that is
+    smaller than 1000.
+    """
+
+    if isinstance(size_bytes, str) and not size_bytes.isdecimal():
+        return size_bytes
+
+    size_bytes = int(size_bytes)
+
+    if size_bytes < 1:
+        return ""
+
+    size_name = ("bytes", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(float(size_bytes) / p, 1)
+
+    return f"{s} {size_name[i]}"

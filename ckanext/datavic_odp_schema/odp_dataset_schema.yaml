@@ -36,13 +36,6 @@ dataset_fields:
   form_placeholder: eg. economy, mental health, government
   required: true
 
-- field_name: category
-  label: Category
-  preset: select
-  choices_helper: category_list
-  required: false
-  form_include_blank_choice: true
-
 - field_name: license_id
   label: License
   form_snippet: license.html
@@ -61,6 +54,37 @@ dataset_fields:
   label: Created (Data Asset)
   preset: date
   required: true
+
+- field_name: update_frequency
+  label: Update Frequency
+  preset: select
+  display_group: General
+  form_include_blank_choice: true
+  choices:
+    - value: continual
+      label: Continual
+    - value: daily
+      label: Daily
+    - value: weekly
+      label: Weekly
+    - value: fortnightly
+      label: Fortnightly
+    - value: monthly
+      label: Monthly
+    - value: quarterly
+      label: Quarterly
+    - value: biannually
+      label: Biannually
+    - value: annually
+      label: Annually
+    - value: asNeeded
+      label: As Needed
+    - value: irregular
+      label: Irregular
+    - value: notPlanned
+      label: Not Planned
+    - value: unknown
+      label: Unknown
 
 - field_name: full_metadata_url
   label: Full Metadata URL
@@ -110,7 +134,8 @@ resource_fields:
   validators: if_empty_guess_format not_empty clean_format unicode_safe
 
 - field_name: filesize
-  label: Filesize
+  label: File Size
+  display_snippet: filesize.html
 
 - field_name: release_date
   label: Release Date
@@ -132,3 +157,9 @@ resource_fields:
 - field_name: attribution
   label: Attribution Statement
   form_snippet: textarea.html
+
+- field_name: attributes
+  label: Attributes
+  form_snippet: vic_hidden.html
+  display_snippet: null
+  validators: ignore_empty
