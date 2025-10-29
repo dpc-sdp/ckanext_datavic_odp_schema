@@ -13,7 +13,7 @@ from ckan.views.user import RequestResetView, RegisterView, login, rotate_token
 log = logging.getLogger(__name__)
 odp_user = Blueprint("odp_user", __name__)
 
-recaptcha_actions = ["login", "request_reset", "register"]
+recaptcha_actions = ["login", "register"]
 CAPTCHA_ERROR_MESSAGE = "CAPTCHA verification failed. Please try again."
 
 
