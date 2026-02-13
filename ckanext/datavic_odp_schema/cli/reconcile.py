@@ -86,7 +86,11 @@ def _dd_package_search(
         resp = requests.get(
             f"{dd_url}/api/3/action/package_search",
             params={
-                "fq": "state:active",
+                "fq": (
+                "+state:active "
+                "+extras_workflow_status:published "
+                "+extras_organization_visibility:all"
+            ),
                 "rows": rows,
                 "start": start,
                 "fl": "id,name",
@@ -120,6 +124,27 @@ def _dd_package_search(
         sys.stdout.flush()
 
     return dd_names, dd_ids
+
+
+def _get_extra(pkg: dict[str, Any], key: str) -> str | None:
+    """Extract an extra value from a CKAN package dict."""
+    for extra in pkg.get("extras", []):
+        if extra.get("key") == key:
+            return extra.get("value")
+    return None
+
+
+def _is_syndication_eligible(pkg: dict[str, Any]) -> bool:
+    """Return True if a DD dataset should be syndicated to DV.
+
+    A dataset is eligible when it is active, public, has
+    ``workflow_status=published`` and ``organization_visibility=all``.
+    """
+    if pkg.get("state") != "active" or pkg.get("private"):
+        return False
+    wf = _get_extra(pkg, "workflow_status")
+    ov = _get_extra(pkg, "organization_visibility")
+    return wf == "published" and ov == "all"
 
 
 def _dd_package_show(
@@ -203,13 +228,13 @@ def _classify_datasets(
         if dd_pkg:
             dd_name = dd_pkg.get("name", "")
             dd_state = dd_pkg.get("state", "")
-            dd_private = dd_pkg.get("private", False)
-            if dd_state == "active" and not dd_private:
-                # Active and public — shouldn't have been unmatched, but keep
+            if _is_syndication_eligible(dd_pkg):
+                # Active, public, published, visibility=all — keep.
                 classification = "matched"
                 action = "keep"
             else:
-                # Exists on DD but not eligible (inactive/private/archived).
+                # Exists on DD but not eligible for syndication
+                # (inactive/private/draft/restricted visibility).
                 classification = "dd_not_eligible"
                 action = "purge"
         else:
