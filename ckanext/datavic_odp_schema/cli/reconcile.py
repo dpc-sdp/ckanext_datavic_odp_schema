@@ -176,7 +176,7 @@ def _dd_package_show(
 
 
 def _classify_datasets(
-    dv_datasets: list[tuple[str, str, str]],
+    dv_datasets: list[tuple[str, str, str, str]],
     dd_names: set[str],
     dd_ids: set[str],
     dd_url: str,
@@ -191,13 +191,13 @@ def _classify_datasets(
     unmatched: list[tuple[str, str, str]] = []
 
     # Phase 1: batch name match (fast, covers ~95%).
-    for dv_id, dv_name, dv_state in dv_datasets:
+    for dv_id, dv_name, dv_state, dv_owner_org in dv_datasets:
         if dv_name in dd_names:
             results.append(
-                _row(dv_id, dv_name, dv_state, "matched", dv_name, "active", "keep")
+                _row(dv_id, dv_name, dv_state, dv_owner_org, "matched", dv_name, "active", "keep")
             )
         else:
-            unmatched.append((dv_id, dv_name, dv_state))
+            unmatched.append((dv_id, dv_name, dv_state, dv_owner_org))
 
     click.secho(
         f"  Phase 1 — {len(results)} matched by name, "
@@ -207,7 +207,7 @@ def _classify_datasets(
     sys.stdout.flush()
 
     # Phase 2: individual API verification for unmatched.
-    for i, (dv_id, dv_name, dv_state) in enumerate(unmatched, 1):
+    for i, (dv_id, dv_name, dv_state, dv_owner_org) in enumerate(unmatched, 1):
         if i % 50 == 0:
             click.secho(f"  Phase 2 — verifying {i}/{len(unmatched)}...", fg="blue")
             sys.stdout.flush()
@@ -256,7 +256,7 @@ def _classify_datasets(
                 action = "skip"
 
         results.append(
-            _row(dv_id, dv_name, dv_state, classification, dd_name, dd_state, action)
+            _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
         )
 
     return results
@@ -266,6 +266,7 @@ def _row(
     dv_id: str,
     dv_name: str,
     dv_state: str,
+    dv_owner_org: str,
     classification: str,
     dd_name: str,
     dd_state: str,
@@ -275,6 +276,7 @@ def _row(
         "dv_id": dv_id,
         "dv_name": dv_name,
         "dv_state": dv_state,
+        "dv_owner_org": dv_owner_org,
         "classification": classification,
         "dd_name": dd_name,
         "dd_state": dd_state,
@@ -332,6 +334,7 @@ _CSV_COLUMNS = [
     "dv_id",
     "dv_name",
     "dv_state",
+    "dv_owner_org",
     "classification",
     "dd_name",
     "dd_state",
@@ -403,7 +406,7 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     sys.stdout.flush()
     dv_datasets: list[tuple[str, str, str]] = (
         model.Session.query(
-            model.Package.id, model.Package.name, model.Package.state
+            model.Package.id, model.Package.name, model.Package.state, model.Package.owner_org
         )
         .filter(model.Package.type == "dataset")
         .all()
