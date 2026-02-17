@@ -150,24 +150,29 @@ def _is_syndication_eligible(pkg: dict[str, Any]) -> bool:
 def _dd_package_show(
     dd_url: str, dd_api_key: str, id_or_name: str
 ) -> dict[str, Any] | None:
-    """Call DD package_show.  Returns the dataset dict or None."""
-    try:
-        resp = requests.get(
-            f"{dd_url}/api/3/action/package_show",
-            params={"id": id_or_name},
-            headers={"Authorization": dd_api_key},
-            timeout=_REQUEST_TIMEOUT,
-        )
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("success"):
-            return data["result"]
+    """Call DD package_show.
+    
+    Returns:
+        dict: Dataset found on DD.
+        None: Dataset definitively not found (404 or unsuccessful response).
+    
+    Raises:
+        requests.RequestException: API error (network, timeout, server error).
+            Caller should treat as "uncertain" status.
+    """
+    resp = requests.get(
+        f"{dd_url}/api/3/action/package_show",
+        params={"id": id_or_name},
+        headers={"Authorization": dd_api_key},
+        timeout=_REQUEST_TIMEOUT,
+    )
+    if resp.status_code == 404:
         return None
-    except requests.RequestException as exc:
-        log.warning("DD package_show(%s) failed: %s", id_or_name, exc)
-        return None
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("success"):
+        return data["result"]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -212,20 +217,27 @@ def _classify_datasets(
             click.secho(f"  Phase 2 — verifying {i}/{len(unmatched)}...", fg="blue")
             sys.stdout.flush()
 
-        classification = "orphan"
+        classification = "uncertain"
         dd_name = ""
         dd_state = ""
-        action = "purge"
-        api_error = False
+        action = "skip"
 
         # Check by name first.
         try:
             dd_pkg = _dd_package_show(dd_url, dd_api_key, dv_name)
-        except Exception:
-            dd_pkg = None
-            api_error = True
+        except Exception as exc:
+            # Any error (network, JSON decode, unexpected) — can't
+            # determine status, mark uncertain and move on.
+            log.warning(
+                "DD error checking dataset %s by name: %s", dv_name, exc
+            )
+            results.append(
+                _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
+            )
+            continue
 
         if dd_pkg:
+            # Found by name — check syndication eligibility.
             dd_name = dd_pkg.get("name", "")
             dd_state = dd_pkg.get("state", "")
             if _is_syndication_eligible(dd_pkg):
@@ -238,12 +250,19 @@ def _classify_datasets(
                 classification = "dd_not_eligible"
                 action = "purge"
         else:
-            # Not found by name — try by DV dataset ID.
+            # Not found by name (404) — try by DV dataset ID.
             try:
                 dd_pkg_by_id = _dd_package_show(dd_url, dd_api_key, dv_id)
-            except Exception:
-                dd_pkg_by_id = None
-                api_error = True
+            except Exception as exc:
+                # Any error — can't determine status, mark uncertain
+                # and move on.
+                log.warning(
+                    "DD error checking dataset %s by ID: %s", dv_id, exc
+                )
+                results.append(
+                    _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
+                )
+                continue
 
             if dd_pkg_by_id:
                 # Found by ID — name mismatch, dataset is valid on DD.
@@ -251,9 +270,10 @@ def _classify_datasets(
                 dd_state = dd_pkg_by_id.get("state", "")
                 classification = "dd_name_mismatch"
                 action = "keep"
-            elif api_error:
-                classification = "uncertain"
-                action = "skip"
+            else:
+                # Not found by name or ID (both returned 404) — confirmed orphan.
+                classification = "orphan"
+                action = "purge"
 
         results.append(
             _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
@@ -451,6 +471,11 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
             fg="cyan",
         )
         sys.stdout.flush()
+
+        # Exit with non-zero status when datasets would be purged so the
+        # calling shell script can report to the monitoring service.
+        if to_purge:
+            raise SystemExit(1)
         return
 
     if not to_purge:
