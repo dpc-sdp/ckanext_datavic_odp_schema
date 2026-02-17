@@ -1,11 +1,11 @@
 import logging
-from typing import List
 
 import click
 from ckan.plugins.toolkit import enqueue_job
 from ckanext.datavic_odp_schema import jobs
 
 from . import maintain
+from . import reconcile
 
 __all__ = [
     "datavic_odp",
@@ -30,3 +30,4 @@ def ckan_worker_job_monitor():
 
 
 datavic_odp.add_command(maintain.maintain)
+datavic_odp.add_command(reconcile.reconcile_datasets)
