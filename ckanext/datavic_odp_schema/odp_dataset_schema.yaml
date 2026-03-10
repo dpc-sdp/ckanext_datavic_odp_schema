@@ -26,8 +26,10 @@ dataset_fields:
   required: true
 
 - field_name: extract
-  form_snippet: null
-  display_snippet: null
+  label: Abstract
+  form_snippet: textarea.html
+  display_group: General
+  required: true
 
 - field_name: tag_string
   label: Keywords
@@ -35,6 +37,19 @@ dataset_fields:
   form_snippet: tags.html
   form_placeholder: eg. economy, mental health, government
   required: true
+
+- field_name: owner_org
+  label: Organization
+  preset: dataset_organization
+  required: true
+
+- field_name: category
+  label: Category
+  preset: select
+  display_group: General
+  choices_helper: category_list
+  required: true
+  form_include_blank_choice: true
 
 - field_name: license_id
   label: License
@@ -45,10 +60,14 @@ dataset_fields:
 - field_name: custom_licence_text
   label: License - other
   form_snippet: text.html
+  validators: ignore_missing required_if_license_other
 
-- field_name: owner_org
-  label: Organization
-  preset: dataset_organization
+- field_name: custom_licence_link
+  label: Custom license link
+  display_group: General
+  form_placeholder: Custom license link
+  form_snippet: text.html
+  validators: ignore_missing required_if_license_other
 
 - field_name: date_created_data_asset
   label: Created (Data Asset)
@@ -104,6 +123,39 @@ dataset_fields:
   validators: default(true) boolean_validator
   output_validators: boolean_validator
 
+- field_name: personal_information
+  label: Personal information
+  preset: select
+  display_group: Security
+  required: true
+  form_include_blank_choice: true
+  choices:
+    - value: not_yet
+      label: Not yet assessed
+    - value: 'yes'
+      label: 'Yes'
+    - value: yes_de_identified
+      label: Yes - with de-identified data
+    - value: 'no'
+      label: 'No'
+
+- field_name: data_owner
+  label: Data Custodian
+  form_placeholder: Joe Bloggs
+  display_group: Custodian
+  form_snippet: text.html
+  default_value: display_name
+  required: true
+
+- field_name: maintainer_email
+  label: Point of contact
+  form_placeholder: email
+  validators: ignore_missing email_validator
+  display_group: Custodian
+  form_snippet: text.html
+  default_value: email
+  required: true
+
 - field_name: nominated_view_id
   display_snippet: null
   form_snippet: vic_hidden.html
@@ -126,7 +178,7 @@ resource_fields:
   label: Description
   form_snippet: markdown.html
   form_placeholder: Some useful notes about the data
-  
+
 - field_name: format
   label: Format
   preset: resource_format_autocomplete
@@ -136,6 +188,7 @@ resource_fields:
 - field_name: filesize
   label: File Size
   display_snippet: filesize.html
+  validators: ignore_missing int_validator
 
 - field_name: release_date
   label: Release Date
