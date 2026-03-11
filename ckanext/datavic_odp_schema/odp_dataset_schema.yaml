@@ -145,7 +145,6 @@ dataset_fields:
   display_group: Custodian
   form_snippet: text.html
   default_value: display_name
-  required: true
 
 - field_name: maintainer_email
   label: Point of contact

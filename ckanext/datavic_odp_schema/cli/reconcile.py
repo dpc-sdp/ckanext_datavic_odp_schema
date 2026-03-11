@@ -23,7 +23,6 @@ import sys
 from typing import Any
 
 import click
-import requests
 from sqlalchemy import or_
 
 import ckan.model as model
@@ -32,108 +31,17 @@ from ckan.lib.search import clear as search_clear
 
 from ckanext.datastore.backend import get_all_resources_ids_in_datastore
 
+from . import dd_api
+
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Config helpers
-# ---------------------------------------------------------------------------
+# Re-export for callers that need config
+_dd_url = dd_api._dd_url
+_dd_api_key = dd_api._dd_api_key
+_get_extra = dd_api._get_extra
 
-_CFG_DD_URL = "ckanext.datavic_odp.reconciliation.dd_url"
-_CFG_DD_API_KEY = "ckanext.datavic_odp.reconciliation.dd_api_key"
-
-
-def _dd_url() -> str:
-    url = tk.config.get(_CFG_DD_URL, "").strip().rstrip("/")
-    if not url:
-        raise click.ClickException(
-            f"DD URL not configured.  Set {_CFG_DD_URL} in ckan.ini "
-            f"or the corresponding environment variable."
-        )
-    return url
-
-
-def _dd_api_key() -> str:
-    key = tk.config.get(_CFG_DD_API_KEY, "").strip()
-    if not key:
-        raise click.ClickException(
-            f"DD API key not configured.  Set {_CFG_DD_API_KEY} in ckan.ini "
-            f"or the corresponding environment variable."
-        )
-    return key
-
-
-# ---------------------------------------------------------------------------
-# DD API helpers
-# ---------------------------------------------------------------------------
-
-_REQUEST_TIMEOUT = 30  # seconds
-
-
-def _dd_package_search(
-    dd_url: str, dd_api_key: str
-) -> tuple[set[str], set[str], set[dict[str, str]]]:
-    """Fetch all active DD dataset names and IDs via paginated package_search.
-
-    Returns:
-        (dd_names, dd_ids) — two sets for fast lookup.
-    """
-    dd_names: set[str] = set()
-    dd_ids: set[str] = set()
-    dd_syndicated_ids: dict[str, str] = {}
-    rows = 1000
-    start = 0
-
-    while True:
-        resp = requests.get(
-            f"{dd_url}/api/3/action/package_search",
-            params={
-                "fq": (
-                "+state:active "
-                "+extras_workflow_status:published "
-                "+extras_organization_visibility:all"
-            ),
-                "rows": rows,
-                "start": start,
-                "fl": "id,name,extras_syndicated_id",
-            },
-            headers={"Authorization": dd_api_key},
-            timeout=_REQUEST_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        if not data.get("success"):
-            raise click.ClickException(
-                f"DD package_search failed: {data.get('error', data)}"
-            )
-
-        results = data["result"]["results"]
-        if not results:
-            break
-
-        for pkg in results:
-            dd_names.add(pkg["name"])
-            dd_ids.add(pkg["id"])
-            dd_syndicated_ids[pkg["name"]] = pkg.get("syndicated_id", "")
-
-        start += rows
-
-        click.secho(
-            f"  Fetched {start} DD datasets so far "
-            f"(total: {data['result']['count']})...",
-            fg="blue",
-        )
-        sys.stdout.flush()
-
-    return dd_names, dd_ids, dd_syndicated_ids
-
-
-def _get_extra(pkg: dict[str, Any], key: str) -> str | None:
-    """Extract an extra value from a CKAN package dict."""
-    for extra in pkg.get("extras", []):
-        if extra.get("key") == key:
-            return extra.get("value")
-    return None
+# Default directory for reconciliation CSV (when --csv-path not set). Adjust as needed.
+DEFAULT_RECONCILIATION_CSV_DIR = "/app/filestore/purge_reports"
 
 
 def _is_syndication_eligible(pkg: dict[str, Any]) -> bool:
@@ -147,34 +55,6 @@ def _is_syndication_eligible(pkg: dict[str, Any]) -> bool:
     wf = _get_extra(pkg, "workflow_status")
     ov = _get_extra(pkg, "organization_visibility")
     return wf == "published" and ov == "all"
-
-
-def _dd_package_show(
-    dd_url: str, dd_api_key: str, id_or_name: str
-) -> dict[str, Any] | None:
-    """Call DD package_show.
-
-    Returns:
-        dict: Dataset found on DD.
-        None: Dataset definitively not found (404 or unsuccessful response).
-
-    Raises:
-        requests.RequestException: API error (network, timeout, server error).
-            Caller should treat as "uncertain" status.
-    """
-    resp = requests.get(
-        f"{dd_url}/api/3/action/package_show",
-        params={"id": id_or_name},
-        headers={"Authorization": dd_api_key},
-        timeout=_REQUEST_TIMEOUT,
-    )
-    if resp.status_code == 404:
-        return None
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("success"):
-        return data["result"]
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +109,7 @@ def _classify_datasets(
 
         # Check by name first.
         try:
-            dd_pkg = _dd_package_show(dd_url, dd_api_key, dv_name)
+            dd_pkg = dd_api.dd_package_show(dd_url, dd_api_key, dv_name)
         except Exception as exc:
             # Any error (network, JSON decode, unexpected) — can't
             # determine status, mark uncertain and move on.
@@ -245,7 +125,7 @@ def _classify_datasets(
             # Found by name — check syndication eligibility.
             dd_name = dd_pkg.get("name", "")
             dd_state = dd_pkg.get("state", "")
-            dd_syndicated_id = dd_pkg.get("syndicated_id", "")
+            dd_syndicated_id = _get_extra(dd_pkg, "syndicated_id") or ""
             if _is_syndication_eligible(dd_pkg):
                 # Active, public, published, visibility=all — keep.
                 classification = "matched"
@@ -258,7 +138,7 @@ def _classify_datasets(
         else:
             # Not found by name (404) — try by DV dataset ID.
             try:
-                dd_pkg_by_id = _dd_package_show(dd_url, dd_api_key, dv_id)
+                dd_pkg_by_id = dd_api.dd_package_show(dd_url, dd_api_key, dv_id)
             except Exception as exc:
                 # Any error — can't determine status, mark uncertain
                 # and move on.
@@ -274,7 +154,7 @@ def _classify_datasets(
                 # Found by ID — name mismatch, dataset is valid on DD.
                 dd_name = dd_pkg_by_id.get("name", "")
                 dd_state = dd_pkg_by_id.get("state", "")
-                dd_syndicated_id = dd_pkg_by_id.get("syndicated_id", "")
+                dd_syndicated_id = _get_extra(dd_pkg_by_id, "syndicated_id") or ""
                 classification = "dd_name_mismatch"
                 action = "keep"
             else:
@@ -403,7 +283,7 @@ def _write_csv(rows: list[dict[str, str]], path: str) -> None:
     default=None,
     type=click.Path(),
     help="Path for the CSV audit report.  Defaults to "
-    "/app/filestore/purge_reports/dv_reconciliation_<timestamp>.csv",
+    "<DEFAULT_RECONCILIATION_CSV_DIR>/dv_reconciliation_<timestamp>.csv",
 )
 def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     """Reconcile DV datasets against the DD source of truth.
@@ -425,7 +305,13 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     # ---- Fetch DD reference set -------------------------------------------
     click.secho("Fetching DD active dataset reference set...", fg="blue")
     sys.stdout.flush()
-    dd_names, dd_ids, dd_syndicated_ids = _dd_package_search(dd_url, dd_api_key)
+    dd_packages = dd_api.fetch_dd_active_packages(dd_url, dd_api_key)
+    dd_names = {p["name"] for p in dd_packages}
+    dd_ids = {p["id"] for p in dd_packages}
+    dd_syndicated_ids = {
+        p["name"]: (_get_extra(p, "syndicated_id") or "")
+        for p in dd_packages
+    }
     click.secho(
         f"  DD reference: {len(dd_names)} active datasets.\n", fg="green"
     )
@@ -474,8 +360,9 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     # ---- CSV report -------------------------------------------------------
     if not csv_path:
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_path = (
-            f"/app/filestore/purge_reports/dv_reconciliation_{ts}.csv"
+        csv_path = os.path.join(
+            DEFAULT_RECONCILIATION_CSV_DIR.rstrip("/"),
+            f"dv_reconciliation_{ts}.csv",
         )
     _write_csv(classified, csv_path)
 
