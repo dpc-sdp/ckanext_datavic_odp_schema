@@ -71,7 +71,7 @@ _REQUEST_TIMEOUT = 30  # seconds
 
 def _dd_package_search(
     dd_url: str, dd_api_key: str
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[dict[str, str]]]:
     """Fetch all active DD dataset names and IDs via paginated package_search.
 
     Returns:
@@ -79,6 +79,7 @@ def _dd_package_search(
     """
     dd_names: set[str] = set()
     dd_ids: set[str] = set()
+    dd_syndicated_ids: dict[str, str] = {}
     rows = 1000
     start = 0
 
@@ -93,7 +94,7 @@ def _dd_package_search(
             ),
                 "rows": rows,
                 "start": start,
-                "fl": "id,name",
+                "fl": "id,name,extras_syndicated_id",
             },
             headers={"Authorization": dd_api_key},
             timeout=_REQUEST_TIMEOUT,
@@ -113,6 +114,7 @@ def _dd_package_search(
         for pkg in results:
             dd_names.add(pkg["name"])
             dd_ids.add(pkg["id"])
+            dd_syndicated_ids[pkg["name"]] = pkg.get("syndicated_id", "")
 
         start += rows
 
@@ -123,7 +125,7 @@ def _dd_package_search(
         )
         sys.stdout.flush()
 
-    return dd_names, dd_ids
+    return dd_names, dd_ids, dd_syndicated_ids
 
 
 def _get_extra(pkg: dict[str, Any], key: str) -> str | None:
@@ -151,11 +153,11 @@ def _dd_package_show(
     dd_url: str, dd_api_key: str, id_or_name: str
 ) -> dict[str, Any] | None:
     """Call DD package_show.
-    
+
     Returns:
         dict: Dataset found on DD.
         None: Dataset definitively not found (404 or unsuccessful response).
-    
+
     Raises:
         requests.RequestException: API error (network, timeout, server error).
             Caller should treat as "uncertain" status.
@@ -184,6 +186,7 @@ def _classify_datasets(
     dv_datasets: list[tuple[str, str, str, str]],
     dd_names: set[str],
     dd_ids: set[str],
+    dd_syndicated_ids: dict[str, str],
     dd_url: str,
     dd_api_key: str,
 ) -> list[dict[str, str]]:
@@ -198,8 +201,9 @@ def _classify_datasets(
     # Phase 1: batch name match (fast, covers ~95%).
     for dv_id, dv_name, dv_state, dv_owner_org in dv_datasets:
         if dv_name in dd_names:
+            dd_syndicated_id = dd_syndicated_ids.get(dv_name, "")
             results.append(
-                _row(dv_id, dv_name, dv_state, dv_owner_org, "matched", dv_name, "active", "keep")
+                _row(dv_id, dv_name, dv_state, dv_owner_org, "matched", dv_name, "active", dd_syndicated_id, "keep")
             )
         else:
             unmatched.append((dv_id, dv_name, dv_state, dv_owner_org))
@@ -220,6 +224,7 @@ def _classify_datasets(
         classification = "uncertain"
         dd_name = ""
         dd_state = ""
+        dd_syndicated_id = ""
         action = "skip"
 
         # Check by name first.
@@ -232,7 +237,7 @@ def _classify_datasets(
                 "DD error checking dataset %s by name: %s", dv_name, exc
             )
             results.append(
-                _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
+                _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
             )
             continue
 
@@ -240,6 +245,7 @@ def _classify_datasets(
             # Found by name — check syndication eligibility.
             dd_name = dd_pkg.get("name", "")
             dd_state = dd_pkg.get("state", "")
+            dd_syndicated_id = dd_pkg.get("syndicated_id", "")
             if _is_syndication_eligible(dd_pkg):
                 # Active, public, published, visibility=all — keep.
                 classification = "matched"
@@ -260,7 +266,7 @@ def _classify_datasets(
                     "DD error checking dataset %s by ID: %s", dv_id, exc
                 )
                 results.append(
-                    _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
+                    _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
                 )
                 continue
 
@@ -268,6 +274,7 @@ def _classify_datasets(
                 # Found by ID — name mismatch, dataset is valid on DD.
                 dd_name = dd_pkg_by_id.get("name", "")
                 dd_state = dd_pkg_by_id.get("state", "")
+                dd_syndicated_id = dd_pkg_by_id.get("syndicated_id", "")
                 classification = "dd_name_mismatch"
                 action = "keep"
             else:
@@ -276,7 +283,7 @@ def _classify_datasets(
                 action = "purge"
 
         results.append(
-            _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, action)
+            _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
         )
 
     return results
@@ -290,6 +297,7 @@ def _row(
     classification: str,
     dd_name: str,
     dd_state: str,
+    dd_syndicated_id: str,
     action: str,
 ) -> dict[str, str]:
     return {
@@ -300,6 +308,7 @@ def _row(
         "classification": classification,
         "dd_name": dd_name,
         "dd_state": dd_state,
+        "dd_syndicated_id": dd_syndicated_id,
         "action": action,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
@@ -358,6 +367,7 @@ _CSV_COLUMNS = [
     "classification",
     "dd_name",
     "dd_state",
+    "dd_syndicated_id",
     "action",
     "timestamp",
 ]
@@ -415,7 +425,7 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     # ---- Fetch DD reference set -------------------------------------------
     click.secho("Fetching DD active dataset reference set...", fg="blue")
     sys.stdout.flush()
-    dd_names, dd_ids = _dd_package_search(dd_url, dd_api_key)
+    dd_names, dd_ids, dd_syndicated_ids = _dd_package_search(dd_url, dd_api_key)
     click.secho(
         f"  DD reference: {len(dd_names)} active datasets.\n", fg="green"
     )
@@ -438,7 +448,7 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
     click.secho("Classifying DV datasets...", fg="blue")
     sys.stdout.flush()
     classified = _classify_datasets(
-        dv_datasets, dd_names, dd_ids, dd_url, dd_api_key
+        dv_datasets, dd_names, dd_ids, dd_syndicated_ids, dd_url, dd_api_key
     )
 
     # Tally classifications.
@@ -451,6 +461,14 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
         count = tallies.get(cls_name, 0)
         colour = "green" if cls_name == "matched" else "yellow" if cls_name in ("dd_name_mismatch", "uncertain") else "red"
         click.secho(f"  {cls_name}: {count}", fg=colour)
+
+    no_syndicated_id = 0
+    for row in classified:
+        sid = (row.get("dd_syndicated_id") or "").strip()
+        if not sid:
+            no_syndicated_id += 1
+    click.secho(f"  datasets without dd_syndicated_id: {no_syndicated_id}", fg="red")
+
     sys.stdout.flush()
 
     # ---- CSV report -------------------------------------------------------
