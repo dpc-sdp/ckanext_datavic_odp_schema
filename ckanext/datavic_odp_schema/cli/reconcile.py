@@ -82,8 +82,9 @@ def _classify_datasets(
     for dv_id, dv_name, dv_state, dv_owner_org in dv_datasets:
         if dv_name in dd_names:
             dd_syndicated_id = dd_syndicated_ids.get(dv_name, "")
+            sid_ok = _check_syndicated_id(dv_id, dv_name, dd_syndicated_id)
             results.append(
-                _row(dv_id, dv_name, dv_state, dv_owner_org, "matched", dv_name, "active", dd_syndicated_id, "keep")
+                _row(dv_id, dv_name, dv_state, dv_owner_org, "matched", dv_name, "active", dd_syndicated_id, "keep", sid_ok)
             )
         else:
             unmatched.append((dv_id, dv_name, dv_state, dv_owner_org))
@@ -105,6 +106,7 @@ def _classify_datasets(
         dd_name = ""
         dd_state = ""
         dd_syndicated_id = ""
+        sid_ok = "unknown"
         action = "skip"
 
         # Check by name first.
@@ -117,7 +119,7 @@ def _classify_datasets(
                 "DD error checking dataset %s by name: %s", dv_name, exc
             )
             results.append(
-                _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
+                _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action, sid_ok)
             )
             continue
 
@@ -135,6 +137,7 @@ def _classify_datasets(
                 # (inactive/private/draft/restricted visibility).
                 classification = "dd_not_eligible"
                 action = "purge"
+            sid_ok = _check_syndicated_id(dv_id, dv_name, dd_syndicated_id)
         else:
             # Not found by name (404) — try by DV dataset ID.
             try:
@@ -146,12 +149,12 @@ def _classify_datasets(
                     "DD error checking dataset %s by ID: %s", dv_id, exc
                 )
                 results.append(
-                    _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
+                    _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action, sid_ok)
                 )
                 continue
 
             if dd_pkg_by_id:
-                # Found by ID — name mismatch, dataset is valid on DD.
+                # Found by DV ID — name mismatch, dataset exists on DD.
                 dd_name = dd_pkg_by_id.get("name", "")
                 dd_state = dd_pkg_by_id.get("state", "")
                 dd_syndicated_id = _get_extra(dd_pkg_by_id, "syndicated_id") or ""
@@ -161,12 +164,38 @@ def _classify_datasets(
                 # Not found by name or ID (both returned 404) — confirmed orphan.
                 classification = "orphan"
                 action = "purge"
+            sid_ok = _check_syndicated_id(dv_id, dv_name, dd_syndicated_id)
 
         results.append(
-            _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action)
+            _row(dv_id, dv_name, dv_state, dv_owner_org, classification, dd_name, dd_state, dd_syndicated_id, action, sid_ok)
         )
 
     return results
+
+
+def _check_syndicated_id(dv_id: str, dv_name: str, dd_syndicated_id: str) -> str:
+    """Return 'yes', 'no', or 'unknown' for the syndicated_id equality check.
+
+    'unknown' means DD has no syndicated_id set (can't verify either way).
+    'no' is logged as a warning with a ready-to-run SQL fix for DD.
+    """
+    if not dd_syndicated_id:
+        return "unknown"
+    if dd_syndicated_id == dv_id:
+        return "yes"
+    log.warning(
+        "syndicated_id mismatch for %s: DD has %r but DV id is %r. "
+        "To fix on DD run:\n"
+        "  UPDATE package_extra SET value = '%s'\n"
+        "  WHERE key = 'syndicated_id'\n"
+        "    AND package_id = (SELECT id FROM package WHERE name = '%s');",
+        dv_name,
+        dd_syndicated_id,
+        dv_id,
+        dv_id,
+        dv_name,
+    )
+    return "no"
 
 
 def _row(
@@ -179,6 +208,7 @@ def _row(
     dd_state: str,
     dd_syndicated_id: str,
     action: str,
+    syndicated_id_ok: str = "unknown",
 ) -> dict[str, str]:
     return {
         "dv_id": dv_id,
@@ -189,6 +219,7 @@ def _row(
         "dd_name": dd_name,
         "dd_state": dd_state,
         "dd_syndicated_id": dd_syndicated_id,
+        "syndicated_id_ok": syndicated_id_ok,
         "action": action,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
@@ -248,6 +279,7 @@ _CSV_COLUMNS = [
     "dd_name",
     "dd_state",
     "dd_syndicated_id",
+    "syndicated_id_ok",
     "action",
     "timestamp",
 ]
@@ -348,12 +380,25 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
         colour = "green" if cls_name == "matched" else "yellow" if cls_name in ("dd_name_mismatch", "uncertain") else "red"
         click.secho(f"  {cls_name}: {count}", fg=colour)
 
-    no_syndicated_id = 0
-    for row in classified:
-        sid = (row.get("dd_syndicated_id") or "").strip()
-        if not sid:
-            no_syndicated_id += 1
-    click.secho(f"  datasets without dd_syndicated_id: {no_syndicated_id}", fg="red")
+    sid_yes = sum(1 for r in classified if r.get("syndicated_id_ok") == "yes")
+    sid_no = sum(1 for r in classified if r.get("syndicated_id_ok") == "no")
+    sid_unknown = sum(1 for r in classified if r.get("syndicated_id_ok") == "unknown")
+    click.secho("\nsyndicated_id verification:", fg="cyan", bold=True)
+    click.secho(f"  ok (matches dv_id):      {sid_yes}", fg="green")
+    click.secho(f"  mismatch (wrong dv_id):  {sid_no}", fg="red")
+    click.secho(f"  unknown (not set on DD): {sid_unknown}", fg="yellow")
+    if sid_no:
+        click.secho(
+            "\n  Mismatched datasets have a stale syndicated_id on DD pointing at an\n"
+            "  old DV dataset id (e.g. after a purge + re-create on DV).\n"
+            "  Fix each one on DD with (check the WARNING lines above for the exact SQL):\n"
+            "    UPDATE package_extra SET value = '<new_dv_id>'\n"
+            "    WHERE key = 'syndicated_id'\n"
+            "      AND package_id = (SELECT id FROM package WHERE name = '<dd_name>');\n"
+            "  Then rebuild the Solr index for that package on DD:\n"
+            "    ckan -c $CKAN_INI search-index rebuild <dd_package_id>",
+            fg="yellow",
+        )
 
     sys.stdout.flush()
 
