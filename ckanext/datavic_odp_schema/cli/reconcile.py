@@ -357,6 +357,7 @@ def reconcile_datasets(do_purge: bool, csv_path: str | None) -> None:
             model.Package.id, model.Package.name, model.Package.state, model.Package.owner_org
         )
         .filter(model.Package.type == "dataset")
+        .filter(model.Package.state == "active")
         .all()
     )
     click.secho(f"  DV local: {len(dv_datasets)} datasets.\n", fg="green")
