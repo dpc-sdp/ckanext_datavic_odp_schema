@@ -160,7 +160,6 @@ dataset_fields:
   display_group: Custodian
   form_snippet: text.html
   default_value: display_name
-  required: true
   help_text: The team or individual responsible for managing this dataset.
 
 - field_name: maintainer_email
