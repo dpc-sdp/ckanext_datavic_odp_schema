@@ -1,7 +1,17 @@
-"""Sync selected fields from DD to DV for linked datasets.
+"""Sync selected fields from DD to DV for datasets linked via DD's syndicated_id.
 
-Uses DD's syndicated_id to find DV packages that are syndicated from DD,
-then patches DV records using CKAN actions (package_patch) in-process.
+Writes directly to ``package_extra`` / ``package`` table — no activity history,
+no ``metadata_modified`` bump, no plugin hooks fired.
+
+Run ``ckan -c $CKAN_INI search-index rebuild`` after the migration to update Solr.
+
+Fields synced
+-------------
+Extras (package_extra):
+  category, personal_information, data_owner, custom_licence_link
+
+Core package column:
+  maintainer_email
 """
 
 from __future__ import annotations
@@ -11,46 +21,110 @@ import datetime
 import logging
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import uuid
 from typing import Any
 
 import click
 
 import ckan.model as model
-import ckan.plugins.toolkit as tk
 
 from . import dd_api
 
 log = logging.getLogger(__name__)
 
-# Fields to sync from DD to DV (package_patch keys). Add or remove as needed.
-# Special handling: "category" is validated/resolved against DV groups (by id or name).
-SYNC_FIELDS = [
+# ---------------------------------------------------------------------------
+# Field lists
+# ---------------------------------------------------------------------------
+
+# Fields stored as package_extra rows on both DD and DV.
+EXTRA_SYNC_FIELDS: list[str] = [
     "category",
     "personal_information",
     "data_owner",
+    "custom_licence_link",
 ]
 
-# Default directory for sync report CSV (when --report-path not set). Adjust as needed.
+# Core CKAN package table columns to sync (not extras).
+CORE_SYNC_FIELDS: list[str] = [
+    "maintainer_email",
+]
+
+SYNC_FIELDS: list[str] = EXTRA_SYNC_FIELDS + CORE_SYNC_FIELDS
+
 DEFAULT_SYNC_REPORT_DIR = "/app/filestore/sync_syndicated_reports"
 
-# Default number of workers for parallel package_patch (only when not dry-run).
-DEFAULT_SYNC_WORKERS = 8
-
-_REPORT_COLUMNS = ["dv_id", "dv_name", "action"] + list(SYNC_FIELDS) + ["error_message"]
+_REPORT_COLUMNS = ["dv_id", "dv_name", "action"] + SYNC_FIELDS + ["warnings"]
 
 
-def _get_extra(pkg: dict[str, Any], key: str) -> str | None:
-    """Get value from package top-level or extras."""
-    return dd_api._get_extra(pkg, key)
+def _get_field(pkg: dict[str, Any], key: str) -> str:
+    """Return a non-empty field value from a package dict, or empty string."""
+    return dd_api._get_extra(pkg, key) or ""
 
 
-def _dd_category_name(dd_pkg: dict[str, Any], category_id: str) -> str | None:
-    """Get the group title or name from DD package's groups for the given category id."""
-    for grp in dd_pkg.get("groups") or []:
-        if grp.get("id") == category_id:
-            return grp.get("title") or grp.get("name") or None
-    return None
+def _resolve_category(
+    category_id: str,
+    dv_category_ids: set[str],
+) -> tuple[str, str]:
+    """Resolve a DD category UUID to a DV group UUID.
+
+    Returns ``(resolved_id, warning)``.  ``warning`` is empty on success.
+
+    DD and DV share group UUIDs, so a direct match is expected for all datasets.
+    """
+    if category_id in dv_category_ids:
+        return category_id, ""
+    return "", f"category UUID {category_id!r} not found on DV"
+
+
+# ---------------------------------------------------------------------------
+# Direct DB write helpers
+# ---------------------------------------------------------------------------
+
+
+def _upsert_extra(
+    session: Any, package_id: str, key: str, value: str
+) -> str:
+    """Upsert a ``package_extra`` row. Returns ``'inserted'``, ``'updated'``, or ``'unchanged'``."""
+    existing = (
+        session.query(model.PackageExtra)
+        .filter_by(package_id=package_id, key=key)
+        .first()
+    )
+    if existing:
+        if existing.value == value and existing.state == "active":
+            return "unchanged"
+        existing.value = value
+        existing.state = "active"
+        return "updated"
+    session.add(
+        model.PackageExtra(
+            id=str(uuid.uuid4()),
+            package_id=package_id,
+            key=key,
+            value=value,
+            state="active",
+        )
+    )
+    return "inserted"
+
+
+def _update_core_field(
+    session: Any, package_id: str, field: str, value: str
+) -> str:
+    """Update a core ``package`` column. Returns ``'updated'`` or ``'unchanged'``."""
+    pkg = session.query(model.Package).filter_by(id=package_id).first()
+    if pkg is None:
+        return "unchanged"
+    current = getattr(pkg, field, None) or ""
+    if current == value:
+        return "unchanged"
+    setattr(pkg, field, value)
+    return "updated"
+
+
+# ---------------------------------------------------------------------------
+# Report helpers
+# ---------------------------------------------------------------------------
 
 
 def _report_row(
@@ -58,45 +132,33 @@ def _report_row(
     dv_name: str,
     action: str,
     values: dict[str, str],
-    error_message: str,
+    warnings: list[str],
 ) -> dict[str, str]:
-    """Build one report row with dv_id, dv_name, action, sync field columns, error_message."""
     row: dict[str, str] = {
         "dv_id": dv_id,
         "dv_name": dv_name,
         "action": action,
-        "error_message": error_message,
+        "warnings": "; ".join(warnings),
     }
     for f in SYNC_FIELDS:
         row[f] = values.get(f, "")
     return row
 
 
-def _patch_one(
-    data: dict[str, Any],
-    dv_id: str,
-    dv_name: str,
-    values: dict[str, str],
-    site_user: str,
-) -> tuple[str, str, str, dict[str, str], str]:
-    """Run package_patch in the current thread (use with ThreadPoolExecutor).
+def _write_report(rows: list[dict[str, str]], path: str) -> None:
+    csv_dir = os.path.dirname(path)
+    if csv_dir:
+        os.makedirs(csv_dir, exist_ok=True)
+    with open(path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=_REPORT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    click.secho(f"\nReport written to: {path}", fg="green")
 
-    Uses a fresh session for this thread. Returns (action, dv_id, dv_name, values, error_message).
-    """
-    model.Session.remove()
-    try:
-        context = {
-            "model": model,
-            "session": model.Session,
-            "ignore_auth": True,
-            "user": site_user,
-        }
-        tk.get_action("package_patch")(context, data)
-        model.Session.commit()
-        return ("updated", dv_id, dv_name, values, "")
-    except Exception as e:
-        model.Session.rollback()
-        return ("failed", dv_id, dv_name, values, str(e))
+
+# ---------------------------------------------------------------------------
+# CLI command
+# ---------------------------------------------------------------------------
 
 
 @click.command("sync-syndicated-fields")
@@ -104,215 +166,175 @@ def _patch_one(
     "--dry-run",
     is_flag=True,
     default=False,
-    help="Only report what would be updated; do not call package_patch.",
+    help="Report what would be written without making any DB changes.",
 )
 @click.option(
     "--report-path",
     default=None,
     type=click.Path(),
-    help="Path for the CSV report. Default: <DEFAULT_SYNC_REPORT_DIR>/sync_syndicated_fields_<timestamp>.csv. Set to '' to skip writing a report.",
+    help=(
+        "Path for the CSV report. "
+        "Defaults to <DEFAULT_SYNC_REPORT_DIR>/sync_syndicated_fields_<timestamp>.csv."
+    ),
 )
-@click.option(
-    "--workers",
-    default=DEFAULT_SYNC_WORKERS,
-    type=int,
-    help=f"Number of parallel workers for package_patch (default {DEFAULT_SYNC_WORKERS}). Ignored when --dry-run.",
-)
-def sync_syndicated_fields(dry_run: bool, report_path: str | None, workers: int) -> None:
-    """Sync configured fields (e.g. category, personal_information, data_owner) from DD to DV for linked datasets.
+def sync_syndicated_fields(dry_run: bool, report_path: str | None) -> None:
+    """Sync fields from DD to DV for datasets linked via DD's syndicated_id.
 
-    Patches DV records using CKAN package_patch (in-process, no API key).
-    Only updates DV datasets that are linked via DD's syndicated_id.
-    Use export-detached-syndicated-datasets first to review detached pairs.
+    Writes directly to ``package_extra`` / ``package`` table — no activity
+    history, no ``metadata_modified`` update, no plugin hooks.
+
+    After running, rebuild the Solr index:
+
+        ckan -c $CKAN_INI search-index rebuild
+
+    Fields synced: category, personal_information, data_owner,
+    custom_licence_link, maintainer_email.
     """
     mode = "DRY-RUN" if dry_run else "SYNC"
     click.secho(f"=== Sync syndicated fields from DD [{mode}] ===\n", fg="cyan", bold=True)
     sys.stdout.flush()
 
     dd_url = dd_api._dd_url()
-    dd_api_key = dd_api._dd_api_key()
-    click.secho(f"DD URL: {dd_url}", fg="blue")
+    dd_key = dd_api._dd_api_key()
+    click.secho(f"DD URL: {dd_url}\n", fg="blue")
     sys.stdout.flush()
 
-    click.secho("Fetching DD active dataset reference set...", fg="blue")
+    # ---- Fetch DD active packages ----------------------------------------
+    click.secho("Fetching DD active datasets...", fg="blue")
     sys.stdout.flush()
-    dd_packages = dd_api.fetch_dd_active_packages(dd_url, dd_api_key)
-    dd_by_syndicated_id: dict[str, dict] = {}
+    dd_packages = dd_api.fetch_dd_active_packages(dd_url, dd_key)
+
+    # Keyed by DV package UUID (DD's syndicated_id extra).
+    dd_by_dv_id: dict[str, dict[str, Any]] = {}
     for pkg in dd_packages:
-        sid = _get_extra(pkg, "syndicated_id")
-        if sid and sid.strip():
-            dd_by_syndicated_id[sid.strip()] = pkg
+        sid = _get_field(pkg, "syndicated_id")
+        if sid:
+            dd_by_dv_id[sid] = pkg
+
     click.secho(
-        f"  DD reference: {len(dd_packages)} active; {len(dd_by_syndicated_id)} with syndicated_id.\n",
+        f"  {len(dd_packages)} active DD datasets; "
+        f"{len(dd_by_dv_id)} with syndicated_id.\n",
         fg="green",
     )
     sys.stdout.flush()
 
-    click.secho("Fetching DV local datasets...", fg="blue")
+    # ---- Load DV category groups for resolution --------------------------
+    dv_groups = list(model.Group.all("group"))
+    dv_category_ids = {g.id for g in dv_groups}
+    click.secho(f"DV categories (groups): {len(dv_category_ids)} available.\n", fg="blue")
+    sys.stdout.flush()
+
+    # ---- Load all DV datasets --------------------------------------------
+    # No state filter — the DD-side query already restricts to active+published
+    # packages, so dd_by_dv_id only contains UUIDs for active DD datasets.
+    # Including non-active DV datasets ensures fields are populated even for
+    # deleted/draft datasets that may be restored later.
+    click.secho("Loading DV datasets...", fg="blue")
     sys.stdout.flush()
     dv_rows = (
         model.Session.query(model.Package.id, model.Package.name)
         .filter(model.Package.type == "dataset")
         .all()
     )
-    click.secho(f"  DV local: {len(dv_rows)} datasets.\n", fg="green")
+    to_sync = [(dv_id, dv_name) for dv_id, dv_name in dv_rows if dv_id in dd_by_dv_id]
+    click.secho(
+        f"  {len(dv_rows)} DV datasets; {len(to_sync)} linked to DD.\n",
+        fg="green",
+    )
     sys.stdout.flush()
 
-    to_update = [r for r in dv_rows if r[0] in dd_by_syndicated_id]
-    click.secho(f"Linked (DD syndicated_id = DV id): {len(to_update)} datasets.\n", fg="blue")
-    sys.stdout.flush()
-
-    # Valid category IDs on DV (group type 'group'); map name/title -> id for fallback lookup
-    dv_groups = list(model.Group.all("group"))
-    dv_category_ids = {g.id for g in dv_groups}
-    dv_group_id_by_name: dict[str, str] = {}
-    for g in dv_groups:
-        if g.title:
-            dv_group_id_by_name[g.title.strip()] = g.id
-        if g.name:
-            dv_group_id_by_name[g.name.strip()] = g.id
-    click.secho(f"DV categories (groups): {len(dv_category_ids)} available.\n", fg="blue")
-    sys.stdout.flush()
-
-    if not to_update:
-        click.secho("Nothing to update.\n", fg="green")
+    if not to_sync:
+        click.secho("Nothing to sync.\n", fg="green")
         sys.stdout.flush()
         return
 
-    skipped = 0
+    # ---- Sync loop -------------------------------------------------------
     report_rows: list[dict[str, str]] = []
-    to_patch: list[tuple[dict[str, Any], str, str, dict[str, str]]] = []
+    counters = {"updated": 0, "skipped": 0, "error": 0}
 
-    for dv_id, dv_name in to_update:
-        dd_pkg = dd_by_syndicated_id[dv_id]
+    for i, (dv_id, dv_name) in enumerate(to_sync):
+        dd_pkg = dd_by_dv_id[dv_id]
         values: dict[str, str] = {}
-        for f in SYNC_FIELDS:
-            v = _get_extra(dd_pkg, f) or dd_pkg.get(f)
-            if v is None:
-                values[f] = ""
-            elif isinstance(v, str):
-                values[f] = v.strip()
-            else:
-                values[f] = str(v)
+        warnings: list[str] = []
 
-        if not any(values[f] for f in SYNC_FIELDS):
-            click.secho(f"  Skip {dv_name}: no sync fields on DD", fg="yellow")
-            skipped += 1
-            report_rows.append(_report_row(dv_id, dv_name, "skipped", values, "no sync fields on DD"))
-            sys.stdout.flush()
+        # Resolve each field value from the DD package dict.
+        for f in EXTRA_SYNC_FIELDS:
+            if f == "category":
+                raw = _get_field(dd_pkg, "category")
+                if raw:
+                    resolved, warn = _resolve_category(raw, dv_category_ids)
+                    values["category"] = resolved
+                    if warn:
+                        warnings.append(warn)
+                else:
+                    values["category"] = ""
+            else:
+                values[f] = _get_field(dd_pkg, f)
+
+        for f in CORE_SYNC_FIELDS:
+            values[f] = _get_field(dd_pkg, f)
+
+        fields_to_write = {f: v for f, v in values.items() if v}
+
+        if not fields_to_write:
+            counters["skipped"] += 1
+            report_rows.append(_report_row(dv_id, dv_name, "skipped_no_values", values, warnings))
             continue
 
-        # Category from DD must exist on DV (by id or by group name); otherwise skip
-        category = values.get("category")
-        if category and "category" in SYNC_FIELDS and category not in dv_category_ids:
-            dd_cat_name = _dd_category_name(dd_pkg, category)
-            lookup_key = str(dd_cat_name).strip() if dd_cat_name else None
-            resolved_id = dv_group_id_by_name.get(lookup_key) if lookup_key else None
-            if resolved_id:
-                values["category"] = resolved_id
-            else:
-                err = "category UUID not found on DV"
-                if dd_cat_name:
-                    err += f"; no DV group with matching name (DD category: {dd_cat_name!r})"
-                else:
-                    err += "; DD package has no group name for this category"
-                click.secho(f"  Skip {dv_name}: {err}", fg="yellow")
-                skipped += 1
-                report_rows.append(_report_row(dv_id, dv_name, "skipped", values, err))
-                sys.stdout.flush()
-                continue
-
-        data: dict[str, Any] = {"id": dv_id}
-        for f in SYNC_FIELDS:
-            if values.get(f):
-                data[f] = values[f]
+        if (i + 1) % 500 == 0:
+            click.secho(f"  Processing {i + 1}/{len(to_sync)}...", fg="blue")
+            sys.stdout.flush()
 
         if dry_run:
-            click.secho(
-                f"  Would patch {dv_name}: {', '.join(f'{f}={values.get(f)!r}' for f in SYNC_FIELDS if values.get(f))}",
-                fg="cyan",
-            )
-            report_rows.append(_report_row(dv_id, dv_name, "would_update", values, ""))
+            parts = ", ".join(f"{f}={v!r}" for f, v in fields_to_write.items())
+            click.secho(f"  Would write {dv_name}: {parts}", fg="cyan")
+            report_rows.append(_report_row(dv_id, dv_name, "would_update", values, warnings))
+            counters["updated"] += 1
             sys.stdout.flush()
             continue
 
-        to_patch.append((data, dv_id, dv_name, values))
-
-
-    site_user = tk.get_action("get_site_user")(
-        {"model": model, "session": model.Session, "ignore_auth": True}, {}
-    )["name"]
-
-    # Run package_patch in parallel when not dry-run
-    updated = 0
-    failed = 0
-    failed_names: list[str] = []
-    if to_patch and not dry_run:
-        n_workers = min(workers, len(to_patch))
-        click.secho(f"  Patching {len(to_patch)} datasets ({n_workers} workers)...", fg="blue")
-        sys.stdout.flush()
-        done = 0
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            futures = {
-                executor.submit(_patch_one, data, dv_id, dv_name, values, site_user): (dv_id, dv_name)
-                for (data, dv_id, dv_name, values) in to_patch
-            }
-            for future in as_completed(futures):
-                action, dv_id, dv_name, values, err_msg = future.result()
-                report_rows.append(_report_row(dv_id, dv_name, action, values, err_msg))
-                if action == "updated":
-                    updated += 1
+        try:
+            for f, v in fields_to_write.items():
+                if f in EXTRA_SYNC_FIELDS:
+                    _upsert_extra(model.Session, dv_id, f, v)
                 else:
-                    failed += 1
-                    failed_names.append(dv_name)
-                    log.error("Failed to patch %s (%s): %s", dv_name, dv_id, err_msg)
-                    click.secho(f"  ERROR {dv_name}: {err_msg}", fg="red")
-                done += 1
-                if done % 50 == 0:
-                    click.secho(f"  Patched {done}/{len(to_patch)}...", fg="green")
-                    sys.stdout.flush()
-    if dry_run:
-        updated = sum(1 for r in report_rows if r.get("action") == "would_update")
+                    _update_core_field(model.Session, dv_id, f, v)
+            model.Session.commit()
+            action = "updated"
+            counters["updated"] += 1
+        except Exception as exc:
+            model.Session.rollback()
+            action = "error"
+            counters["error"] += 1
+            warnings.append(str(exc))
+            log.error("Failed to write %s (%s): %s", dv_name, dv_id, exc)
+            click.secho(f"  ERROR {dv_name}: {exc}", fg="red")
 
-    # ---- Summary ----------------------------------------------------------
+        report_rows.append(_report_row(dv_id, dv_name, action, values, warnings))
+
+    # ---- Summary ---------------------------------------------------------
     click.secho("\n--- Summary ---", fg="cyan", bold=True)
-    click.secho(f"  Linked (DD syndicated_id = DV id): {len(to_update)}", fg="blue")
-    click.secho(f"  Updated: {updated}", fg="green")
-    click.secho(f"  Skipped (no sync fields on DD): {skipped}", fg="yellow")
-    click.secho(f"  Failed: {failed}", fg="red" if failed else "green")
-    if failed_names:
-        click.secho("  Failed datasets:", fg="red")
-        for name in failed_names[:20]:
-            click.secho(f"    - {name}", fg="red")
-        if len(failed_names) > 20:
-            click.secho(f"    ... and {len(failed_names) - 20} more", fg="red")
+    click.secho(f"  Linked:   {len(to_sync)}", fg="blue")
+    click.secho(f"  Updated:  {counters['updated']}", fg="green")
+    click.secho(f"  Skipped:  {counters['skipped']}", fg="yellow")
+    click.secho(
+        f"  Errors:   {counters['error']}",
+        fg="red" if counters["error"] else "green",
+    )
+    if not dry_run:
+        click.secho(
+            "\nNext step — rebuild the Solr index to surface the new field values:\n"
+            "  ckan -c $CKAN_INI search-index rebuild",
+            fg="yellow",
+        )
+    sys.stdout.flush()
 
-    # ---- CSV report -------------------------------------------------------
-    if report_path is not None:
-        if not report_path.strip():
-            pass
-        else:
-            csv_dir = os.path.dirname(report_path)
-            if csv_dir:
-                os.makedirs(csv_dir, exist_ok=True)
-            with open(report_path, "w", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=_REPORT_COLUMNS)
-                writer.writeheader()
-                writer.writerows(report_rows)
-            click.secho(f"\nReport written to: {report_path}", fg="green")
-    else:
+    # ---- CSV report ------------------------------------------------------
+    if not report_path:
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         report_path = os.path.join(
             DEFAULT_SYNC_REPORT_DIR.rstrip("/"),
             f"sync_syndicated_fields_{ts}.csv",
         )
-        csv_dir = os.path.dirname(report_path)
-        if csv_dir:
-            os.makedirs(csv_dir, exist_ok=True)
-        with open(report_path, "w", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=_REPORT_COLUMNS)
-            writer.writeheader()
-            writer.writerows(report_rows)
-        click.secho(f"\nReport written to: {report_path}", fg="green")
-
+    _write_report(report_rows, report_path)
     sys.stdout.flush()
