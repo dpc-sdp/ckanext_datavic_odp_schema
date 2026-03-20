@@ -88,6 +88,7 @@ dataset_fields:
   label: Update Frequency
   preset: select
   display_group: General
+  required: true
   form_include_blank_choice: true
   choices:
     - value: continual
@@ -119,7 +120,7 @@ dataset_fields:
   label: Full Metadata URL
   display_group: General
   form_snippet: text.html
-  help_text: Provide a link to a complete metadata record, if available..
+  help_text: Provide a link to a complete metadata record, if available.
 
 - field_name: dtv_preview
   label: Digital Twin Preview
@@ -148,7 +149,7 @@ dataset_fields:
     - value: 'yes'
       label: 'Yes'
     - value: yes_de_identified
-      label: Yes - with de-identified data
+      label: Yes - it has been de-identifie
     - value: 'no'
       label: 'No'
   help_text: Does the dataset contain personal information or health information as defined by <a href="https://ovic.vic.gov.au/book/key-concepts" target="_blank">OVIC</a>?
@@ -159,16 +160,14 @@ dataset_fields:
   form_placeholder: Joe Bloggs
   display_group: Custodian
   form_snippet: text.html
-  default_value: display_name
   help_text: The team or individual responsible for managing this dataset.
 
 - field_name: maintainer_email
   label: Point of contact
   form_placeholder: email
-  validators: url_email_validator
+  validators: ignore_missing url_email_validator
   display_group: Custodian
   form_snippet: text.html
-  default_value: email
   help_text: Shared inbox or contact form for user queries e.g. https://data.melbourne.vic.gov.au/pages/contact_us_form/
 
 - field_name: nominated_view_id
@@ -188,7 +187,6 @@ resource_fields:
 - field_name: name
   label: Name
   form_placeholder: eg. January 2011 Gold Prices
-  required: true
 
 - field_name: description
   label: Description
@@ -230,10 +228,10 @@ resource_fields:
 - field_name: attribution
   label: Attribution Statement
   form_snippet: textarea.html
+  help_text: Helps users correctly attribute the data resource.
 
 - field_name: attributes
   label: Attributes
   form_snippet: vic_hidden.html
   display_snippet: null
   validators: ignore_empty
-  help_text: Helps users correctly attribute the data resource.
