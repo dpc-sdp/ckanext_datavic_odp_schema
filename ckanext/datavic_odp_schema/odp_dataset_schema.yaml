@@ -9,6 +9,7 @@ dataset_fields:
   label: Title
   preset: title
   form_placeholder: eg. A descriptive title
+  help_text: A meaningful and descriptive title for the dataset.
   required: true
 
 - field_name: name
@@ -18,16 +19,23 @@ dataset_fields:
 
 - field_name: alias
   preset: dataset_alias
+  help_text: If you update the DataVic URL after publishing, add the original value here to automatically redirect users.
 
 - field_name: notes
   label: Description
   form_snippet: markdown.html
   form_placeholder: eg. Some useful notes about the data
   required: true
+  help_text: Detailed description of the contents, purpose and structure of the dataset and how it was collected.
 
 - field_name: extract
-  form_snippet: null
-  display_snippet: null
+  label: Abstract
+  form_snippet: textarea.html
+  display_group: General
+  required: true
+  form_attrs:
+    maxlength: 200
+  help_text: Short description used by web crawlers to populate search engine indexes and help users discover the dataset.
 
 - field_name: tag_string
   label: Keywords
@@ -35,30 +43,52 @@ dataset_fields:
   form_snippet: tags.html
   form_placeholder: eg. economy, mental health, government
   required: true
+  help_text: Significant words, phrases or terms that represent the core topics of the dataset.
+
+- field_name: owner_org
+  label: Organization
+  preset: dataset_organization
+  required: true
+
+- field_name: category
+  label: Category
+  preset: select
+  display_group: General
+  choices_helper: category_list
+  required: true
+  form_include_blank_choice: true
 
 - field_name: license_id
   label: License
   form_snippet: license.html
-  help_text: License definitions and additional information can be found at http://opendefinition.org/
+  help_text: Select the relevant license that the dataset is being released under. Licensing your data for sharing, reuse and repurpose helps to ensure the appropriate attribution and conditions are applied.
   required: true
 
 - field_name: custom_licence_text
   label: License - other
   form_snippet: text.html
+  validators: ignore_missing required_if_license_other
+  help_text: If you selected 'Other (Open)', specify the applicable license.
 
-- field_name: owner_org
-  label: Organization
-  preset: dataset_organization
+- field_name: custom_licence_link
+  label: Custom license link
+  display_group: General
+  form_placeholder: Custom license link
+  form_snippet: text.html
+  validators: ignore_missing required_if_license_other
+  help_text: If you selected 'Other (Open)', provide a link to the applicable license.
 
 - field_name: date_created_data_asset
   label: Created (Data Asset)
   preset: date
   required: true
+  help_text: Date the dataset was first created or acquired (not the date of the metadata record was created on DataVic).
 
 - field_name: update_frequency
   label: Update Frequency
   preset: select
   display_group: General
+  required: true
   form_include_blank_choice: true
   choices:
     - value: continual
@@ -90,6 +120,7 @@ dataset_fields:
   label: Full Metadata URL
   display_group: General
   form_snippet: text.html
+  help_text: Provide a link to a complete metadata record, if available.
 
 - field_name: dtv_preview
   label: Digital Twin Preview
@@ -103,6 +134,41 @@ dataset_fields:
       label: "Off"
   validators: default(true) boolean_validator
   output_validators: boolean_validator
+  help_text: Suitable spatial datasets can be previewed on DataVic using Digital Twin Victoria.<br/>You can manually turn this off if required.
+  help_allow_html: true
+
+- field_name: personal_information
+  label: Personal information
+  preset: select
+  display_group: Security
+  required: true
+  form_include_blank_choice: true
+  choices:
+    - value: not_yet
+      label: Not yet assessed
+    - value: 'yes'
+      label: 'Yes'
+    - value: yes_de_identified
+      label: Yes - it has been de-identifie
+    - value: 'no'
+      label: 'No'
+  help_text: Does the dataset contain personal information or health information as defined by <a href="https://ovic.vic.gov.au/book/key-concepts" target="_blank">OVIC</a>?
+  help_allow_html: true
+
+- field_name: data_owner
+  label: Data Custodian
+  form_placeholder: Joe Bloggs
+  display_group: Custodian
+  form_snippet: text.html
+  help_text: The team or individual responsible for managing this dataset.
+
+- field_name: maintainer_email
+  label: Point of contact
+  form_placeholder: email
+  validators: ignore_missing url_email_validator
+  display_group: Custodian
+  form_snippet: text.html
+  help_text: Shared inbox or contact form for user queries e.g. https://data.melbourne.vic.gov.au/pages/contact_us_form/
 
 - field_name: nominated_view_id
   display_snippet: null
@@ -126,7 +192,7 @@ resource_fields:
   label: Description
   form_snippet: markdown.html
   form_placeholder: Some useful notes about the data
-  
+
 - field_name: format
   label: Format
   preset: resource_format_autocomplete
@@ -136,27 +202,33 @@ resource_fields:
 - field_name: filesize
   label: File Size
   display_snippet: filesize.html
+  validators: ignore_missing int_validator
 
 - field_name: release_date
   label: Release Date
   preset: date
+  help_text: Date the data resource was publicly released.
 
 - field_name: period_start
   label: Temporal Coverage Start
   preset: date
+  help_text: Start date of time period the data resource covers.
 
 - field_name: period_end
   label: Temporal Coverage End
   preset: date
+  help_text: End date of time period the data resource covers.
 
 - field_name: data_quality
   label: Data Quality Statement
-  form_snippet: textarea.html
+  form_snippet: markdown.html
   display_snippet: markdown.html
+  help_text: Describe the quality of the data resource and any disclaimers/limitations. Otherwise, link to a separate data quality statement
 
 - field_name: attribution
   label: Attribution Statement
   form_snippet: textarea.html
+  help_text: Helps users correctly attribute the data resource.
 
 - field_name: attributes
   label: Attributes
