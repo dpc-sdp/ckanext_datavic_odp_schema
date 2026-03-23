@@ -8,7 +8,7 @@ Run ``ckan -c $CKAN_INI search-index rebuild`` after the migration to update Sol
 Fields synced
 -------------
 Extras (package_extra):
-  category, personal_information, data_owner, custom_licence_link
+  category, personal_information, data_owner, custom_licence_link, update_frequency
 
 Core package column:
   maintainer_email
@@ -42,6 +42,7 @@ EXTRA_SYNC_FIELDS: list[str] = [
     "personal_information",
     "data_owner",
     "custom_licence_link",
+    "update_frequency",
 ]
 
 # Core CKAN package table columns to sync (not extras).
@@ -188,7 +189,7 @@ def sync_syndicated_fields(dry_run: bool, report_path: str | None) -> None:
         ckan -c $CKAN_INI search-index rebuild
 
     Fields synced: category, personal_information, data_owner,
-    custom_licence_link, maintainer_email.
+    custom_licence_link, update_frequency, maintainer_email.
     """
     mode = "DRY-RUN" if dry_run else "SYNC"
     click.secho(f"=== Sync syndicated fields from DD [{mode}] ===\n", fg="cyan", bold=True)

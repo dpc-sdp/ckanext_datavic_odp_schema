@@ -25,11 +25,11 @@ def required_if_license_other(key, data, errors, context):
 
 def url_email_validator(key, data, errors, context):
     """
-    Validate that the value is non-empty and either a valid email or a valid URL.
+    Validate that the value, when provided, is a valid email or URL.
     """
     value = data.get(key)
     if value is tk.missing or value is None or (isinstance(value, str) and not value.strip()):
-        errors[key].append(tk._("Missing value"))
+        # Optional field: empty values are allowed.
         return
 
     value = value.strip() if isinstance(value, str) else str(value).strip()
