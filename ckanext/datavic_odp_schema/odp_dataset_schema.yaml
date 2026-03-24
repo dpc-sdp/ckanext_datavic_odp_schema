@@ -149,7 +149,7 @@ dataset_fields:
     - value: 'yes'
       label: 'Yes'
     - value: yes_de_identified
-      label: Yes - it has been de-identifie
+      label: Yes - it has been de-identified
     - value: 'no'
       label: 'No'
   help_text: Does the dataset contain personal information or health information as defined by <a href="https://ovic.vic.gov.au/book/key-concepts" target="_blank">OVIC</a>?
@@ -187,6 +187,7 @@ resource_fields:
 - field_name: name
   label: Name
   form_placeholder: eg. January 2011 Gold Prices
+  required: true
 
 - field_name: description
   label: Description
