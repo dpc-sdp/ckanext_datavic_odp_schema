@@ -17,6 +17,7 @@
 {%- set domain = domain|replace("http://", "")|replace("https://", "") -%}
 {%- set module_name = 'datavic-slug-visible' if entity_type == 'dataset' else 'slug-preview-slug' -%}
 {%- set attrs = {
+    'class': 'form-control',
     'data-module': module_name,
     'data-module-prefix': domain,
     'data-module-placeholder': module_placeholder } -%}
