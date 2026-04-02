@@ -46,7 +46,7 @@ dataset_fields:
   form_snippet: tags.html
   form_placeholder: eg. economy, mental health, government
   required: true
-  validators: scheming_required
+  validators: datavic_tag_string_convert
   help_text: Significant words, phrases or terms that represent the core topics of the dataset.
 
 - field_name: owner_org
@@ -192,6 +192,7 @@ resource_fields:
   label: Name
   form_placeholder: eg. January 2011 Gold Prices
   required: true
+  validators: scheming_required
 
 - field_name: description
   label: Description
@@ -205,9 +206,9 @@ resource_fields:
   validators: if_empty_guess_format not_empty clean_format unicode_safe
 
 - field_name: filesize
-  label: File Size
+  label: File size (bytes)
   display_snippet: filesize.html
-  validators: ignore_missing int_validator
+  validators: ignore_missing datavic_filesize_validator
 
 - field_name: release_date
   label: Release Date
