@@ -5,6 +5,7 @@
 {% block errors %}
   {% if error_summary and not errors %}
     {{ form.errors(error_summary) }}
+  {% else %}
+    {{ super() }}
   {% endif %}
-  {{ super() }}
 {% endblock %}

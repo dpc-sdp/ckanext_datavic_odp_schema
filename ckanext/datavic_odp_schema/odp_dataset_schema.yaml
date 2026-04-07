@@ -67,6 +67,7 @@ dataset_fields:
   form_snippet: license.html
   help_text: Select the relevant license that the dataset is being released under. Licensing your data for sharing, reuse and repurpose helps to ensure the appropriate attribution and conditions are applied.
   required: true
+  default: cc-by
 
 - field_name: custom_licence_text
   label: License - other
