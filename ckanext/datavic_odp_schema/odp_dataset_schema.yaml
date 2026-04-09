@@ -11,15 +11,18 @@ dataset_fields:
   form_placeholder: eg. A descriptive title
   help_text: A meaningful and descriptive title for the dataset.
   required: true
+  validators: scheming_required
 
 - field_name: name
   label: URL
-  preset: dataset_alias_slug
+  form_snippet: slug.html
+  validators: not_empty unicode_safe name_validator package_name_validator name_doesnt_conflict_with_alias
   form_placeholder: eg. my-dataset
+  help_text: This URL is automatically generated based on the title and can be edited if required.
 
 - field_name: alias
   preset: dataset_alias
-  help_text: If you update the DataVic URL after publishing, add the original value here to automatically redirect users.
+  help_text: If you update the URL after publishing, add the original value here to automatically redirect users.
 
 - field_name: notes
   label: Description
@@ -43,6 +46,7 @@ dataset_fields:
   form_snippet: tags.html
   form_placeholder: eg. economy, mental health, government
   required: true
+  validators: datavic_tag_string_convert
   help_text: Significant words, phrases or terms that represent the core topics of the dataset.
 
 - field_name: owner_org
@@ -63,6 +67,7 @@ dataset_fields:
   form_snippet: license.html
   help_text: Select the relevant license that the dataset is being released under. Licensing your data for sharing, reuse and repurpose helps to ensure the appropriate attribution and conditions are applied.
   required: true
+  default: cc-by
 
 - field_name: custom_licence_text
   label: License - other
@@ -188,6 +193,7 @@ resource_fields:
   label: Name
   form_placeholder: eg. January 2011 Gold Prices
   required: true
+  validators: scheming_required
 
 - field_name: description
   label: Description
@@ -201,9 +207,9 @@ resource_fields:
   validators: if_empty_guess_format not_empty clean_format unicode_safe
 
 - field_name: filesize
-  label: File Size
+  label: File size (bytes)
   display_snippet: filesize.html
-  validators: ignore_missing int_validator
+  validators: ignore_missing datavic_filesize_validator
 
 - field_name: release_date
   label: Release Date

@@ -3,6 +3,8 @@ import logging
 import ckan.plugins as p
 import ckan.plugins.toolkit as tk
 
+from ckanext.datavic_odp_schema import validators
+
 log = logging.getLogger(__name__)
 
 
