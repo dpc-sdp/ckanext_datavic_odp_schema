@@ -22,6 +22,8 @@ import ckan.plugins.toolkit as tk
 
 _CFG_DD_URL = "ckanext.datavic_odp.reconciliation.dd_url"
 _CFG_DD_API_KEY = "ckanext.datavic_odp.reconciliation.dd_api_key"
+_CFG_API_TOKEN_HEADER = "apitoken_header_name"
+_DEFAULT_API_TOKEN_HEADER = "X-CKAN-API-Key"
 
 REQUEST_TIMEOUT = 30  # seconds
 
@@ -44,6 +46,14 @@ def _dd_api_key() -> str:
             f"or the corresponding environment variable."
         )
     return key
+
+
+def _dd_auth_headers(dd_api_key: str) -> dict[str, str]:
+    header_name = (
+        tk.config.get(_CFG_API_TOKEN_HEADER, "").strip()
+        or _DEFAULT_API_TOKEN_HEADER
+    )
+    return {header_name: dd_api_key}
 
 
 def _get_extra(pkg: dict[str, Any], key: str) -> str | None:
@@ -87,7 +97,7 @@ def _fetch_dd_search_page(
             "rows": _PAGE_SIZE,
             "start": start,
         },
-        headers={"Authorization": dd_api_key},
+        headers=_dd_auth_headers(dd_api_key),
         timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
@@ -114,7 +124,7 @@ def fetch_dd_active_packages(
     resp = requests.get(
         f"{dd_url}/api/3/action/package_search",
         params={"fq": _SEARCH_FQ, "rows": _PAGE_SIZE, "start": 0},
-        headers={"Authorization": dd_api_key},
+        headers=_dd_auth_headers(dd_api_key),
         timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
@@ -181,7 +191,7 @@ def dd_package_show(
     resp = requests.get(
         f"{dd_url}/api/3/action/package_show",
         params={"id": id_or_name},
-        headers={"Authorization": dd_api_key},
+        headers=_dd_auth_headers(dd_api_key),
         timeout=REQUEST_TIMEOUT,
     )
     if resp.status_code == 404:
