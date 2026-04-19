@@ -21,6 +21,7 @@ import sys
 import tempfile
 from typing import Any
 from urllib.parse import urlparse
+from werkzeug.datastructures import FileStorage
 
 import click
 import ckanapi
@@ -139,16 +140,19 @@ def _map_frequency(pkg: dict) -> tuple[str, str]:
     return FREQUENCY_FALLBACK, "freq_fallback"
 
 
-def _tag_string(pkg: dict) -> tuple[str, str]:
-    """Build the DV tag_string from DGA tags.
+def _build_tags(pkg: dict) -> tuple[list[dict[str, str]], str]:
+    """Build DV tags from DGA tags.
 
-    Returns ``(tag_string, flag)`` where flag is ``'tag_fallback'`` when
+    Returns ``(tags, flag)`` where flag is ``'tag_fallback'`` when
     the fallback tag is used.
     """
-    names = [t["name"] for t in pkg.get("tags", []) if t.get("name")]
+    names = [(t.get("name") or "").strip() for t in pkg.get("tags", [])]
+    names = [name for name in names if name]
+
     if names:
-        return ", ".join(names), ""
-    return TAG_FALLBACK, "tag_fallback"
+        return [{"name": name} for name in names], ""
+
+    return [{"name": TAG_FALLBACK}], "tag_fallback"
 
 
 def _resource_name(resource: dict) -> str:
@@ -164,18 +168,38 @@ def _resource_name(resource: dict) -> str:
 # Helpers — CSV loading
 # ---------------------------------------------------------------------------
 
+def normalize_cell(value: str | None) -> str:
+    """Normalize a CSV cell value by removing common encoding artifacts.
+
+    Removes the following characters wherever they appear:
+    - \\u00a0: non-breaking space (NBSP)
+    - \\ufffd: Unicode replacement character (�)
+    - \\ufeff: byte order mark (BOM)
+
+    Also trims leading/trailing whitespace. Returns an empty string for None.
+    """
+    if not value:
+        return ""
+    for ch in "\u00a0\ufffd\ufeff":
+        value = value.replace(ch, "")
+    return value.strip()
+
 
 def _load_councils(csv_path: str) -> list[dict[str, str]]:
-    """Load the council list from a CSV file.
+    """Load council records from a CSV file and normalize all fields.
 
-    Strips NBSP (\\u00a0) padding and BOM from all cells.
-    Returns list of dicts with keys: Organisation, URL, ``Org Slug``.
+    Applies ``normalize_cell`` to both column names and values to remove
+    encoding artifacts and trim whitespace.
+
+    Returns:
+        A list of dictionaries with cleaned keys and values
+        (e.g. Organisation, URL, Org Slug).
     """
     councils = []
     with open(csv_path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            clean = {k.strip("\u00a0").strip(): v.strip("\u00a0").strip() for k, v in row.items()}
+            clean = {normalize_cell(k): normalize_cell(v) for k, v in row.items()}
             councils.append(clean)
     return councils
 
@@ -292,25 +316,38 @@ def _migrate_org(
 
     # Download and attach org image
     image_url = dga_org.get("image_display_url") or dga_org.get("image_url") or ""
+    tmp_path: str | None = None
+    image_upload_fh: Any = None
+
     if image_url:
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=_image_suffix(image_url)) as tmp:
                 tmp_path = tmp.name
             dga.download_file(image_url, tmp_path, max_bytes=10 * 1024 * 1024)
-            with open(tmp_path, "rb") as img_fh:
-                org_data["image_upload"] = img_fh
-                tk.get_action("organization_create")(_site_context(), org_data)
+            image_upload_fh = open(tmp_path, "rb")
+            org_data["image_upload"] = image_upload_fh
         except Exception as exc:
             log.warning("Image download failed for %r (%s); creating org without image", slug, exc)
             org_data.pop("image_upload", None)
-            tk.get_action("organization_create")(_site_context(), org_data)
-        finally:
+            if image_upload_fh:
+                try:
+                    image_upload_fh.close()
+                except Exception:
+                    pass
+
+    try:
+        tk.get_action("organization_create")(_site_context(), org_data)
+    finally:
+        if image_upload_fh:
+            try:
+                image_upload_fh.close()
+            except Exception:
+                pass
+        if tmp_path:
             try:
                 os.unlink(tmp_path)
             except Exception:
                 pass
-    else:
-        tk.get_action("organization_create")(_site_context(), org_data)
 
     click.secho(f"  org {slug}: created (id={dga_id})", fg="green")
     writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "created"))
@@ -337,7 +374,7 @@ def _build_dataset_payload(
     notes = dga_pkg.get("notes") or ""
     extract = notes[:200]
 
-    tag_str, tag_flag = _tag_string(dga_pkg)
+    tags, tag_flag = _build_tags(dga_pkg)
     if tag_flag:
         flags_out.append(tag_flag)
 
@@ -350,7 +387,7 @@ def _build_dataset_payload(
     if freq_flag:
         flags_out.append(freq_flag)
 
-    date_created = _get_extra(dga_pkg, "temporal_coverage_from") or ""
+    date_created = dga_pkg.get("temporal_coverage_from") or ""
     dga_name = dga_pkg.get("name") or ""
 
     return {
@@ -359,7 +396,7 @@ def _build_dataset_payload(
         "name": dga_name,
         "notes": notes,
         "extract": extract,
-        "tag_string": tag_str,
+        "tags": tags,
         "owner_org": dv_org_id,
         "license_id": dv_license,
         "data_owner": dga_pkg.get("author") or "",
@@ -410,8 +447,8 @@ def _migrate_dataset(
     counters["dataset_created"] += 1
 
     # Temporal fields for resource period_start / period_end
-    period_start = _get_extra(dga_pkg, "temporal_coverage_from") or ""
-    period_end = _get_extra(dga_pkg, "temporal_coverage_to") or ""
+    period_start = dga_pkg.get("temporal_coverage_from") or ""
+    period_end = dga_pkg.get("temporal_coverage_to") or ""
 
     for resource in dga_pkg.get("resources", []):
         _migrate_resource(
@@ -472,10 +509,18 @@ def _migrate_resource(
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=_res_suffix(res_name)) as tmp:
                 tmp_path = tmp.name
+
             dga.download_file(url, tmp_path, max_bytes=max_filesize_bytes)
+
             with open(tmp_path, "rb") as upload_fh:
                 resource_payload = dict(base_payload)
-                resource_payload["upload"] = upload_fh
+    
+                # CKAN expects file uploads as FileStorage objects in the payload.
+                resource_payload["upload"] = FileStorage(
+                    stream=upload_fh,
+                    filename=res_name,
+                    content_type="application/octet-stream",
+                )
                 dv_res = tk.get_action("resource_create")(_site_context(), resource_payload)
             writer.writerow(
                 _audit_row(org_slug, "resource", dga_res_id, dv_res["id"], res_name,
@@ -501,6 +546,7 @@ def _migrate_resource(
                     pass
     else:
         # Linked resource — pass URL through
+        flags.append("linked_resource")
         _create_linked_resource(base_payload, url, dv_pkg_id, org_slug, dga_pkg_id, dga_res_id,
                                 res_name, writer, counters, flags)
 
@@ -577,7 +623,9 @@ def _res_suffix(name: str) -> str:
     show_default=True,
     help="Directory for the per-run audit CSV report.",
 )
+@click.pass_context
 def migrate_from_data_gov_au(
+    ctx: click.Context,
     org_slugs: tuple[str, ...],
     max_filesize_mb: int,
     csv_path: str,
@@ -635,40 +683,49 @@ def migrate_from_data_gov_au(
     }
 
     try:
-        for council in councils:
-            slug = council.get("Org Slug") or council.get("org_slug") or ""
-            if not slug:
-                click.secho(f"  Skipping row with missing slug: {council}", fg="yellow")
-                continue
+        app = ctx.meta["flask_app"]
+        # Use test_request_context for CLI operations to provide Flask request context
+        # that plugins like fortify expect when creating/modifying organizations
+        with app.test_request_context():
+            # Set up the user context for plugins that expect toolkit.g.userobj
+            from ckan import model
+            site_user = tk.get_action("get_site_user")({"ignore_auth": True}, {})
+            tk.g.userobj = model.User.get(site_user["name"])
+            
+            for council in councils:
+                slug = council.get("Org Slug") or council.get("org_slug") or ""
+                if not slug:
+                    click.secho(f"  Skipping row with missing slug: {council}", fg="yellow")
+                    continue
 
-            click.secho(f"\n--- {slug} ---", fg="cyan", bold=True)
-            sys.stdout.flush()
+                click.secho(f"\n--- {slug} ---", fg="cyan", bold=True)
+                sys.stdout.flush()
 
-            dv_org_id = _migrate_org(client, slug, writer, counters)
-            if dv_org_id is None:
-                click.secho(f"  Skipping datasets for {slug} (org migration failed)", fg="red")
-                continue
+                dv_org_id = _migrate_org(client, slug, writer, counters)
+                if dv_org_id is None:
+                    click.secho(f"  Skipping datasets for {slug} (org migration failed)", fg="red")
+                    continue
 
-            dataset_count = 0
-            for dga_pkg in dga.iter_org_packages(client, dv_org_id):
-                dataset_count += 1
-                if dataset_count % 50 == 0:
-                    click.secho(f"  ... {dataset_count} datasets processed", fg="blue")
-                    sys.stdout.flush()
-                _migrate_dataset(
-                    dga_pkg=dga_pkg,
-                    dv_org_id=dv_org_id,
-                    org_slug=slug,
-                    writer=writer,
-                    counters=counters,
-                    max_filesize_bytes=max_filesize_bytes,
+                dataset_count = 0
+                for dga_pkg in dga.iter_org_packages(client, slug):
+                    dataset_count += 1
+                    if dataset_count % 50 == 0:
+                        click.secho(f"  ... {dataset_count} datasets processed", fg="blue")
+                        sys.stdout.flush()
+                    _migrate_dataset(
+                        dga_pkg=dga_pkg,
+                        dv_org_id=dv_org_id,
+                        org_slug=slug,
+                        writer=writer,
+                        counters=counters,
+                        max_filesize_bytes=max_filesize_bytes,
+                    )
+
+                click.secho(
+                    f"  {slug}: {dataset_count} dataset(s) processed",
+                    fg="green",
                 )
-
-            click.secho(
-                f"  {slug}: {dataset_count} dataset(s) processed",
-                fg="green",
-            )
-            sys.stdout.flush()
+                sys.stdout.flush()
     finally:
         report_fh.close()
 
