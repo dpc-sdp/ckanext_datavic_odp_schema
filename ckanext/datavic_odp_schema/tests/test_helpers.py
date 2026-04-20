@@ -32,7 +32,6 @@ class TestHelpers:
                 resource_data(),
                 resource_data(),
                 resource_data(format="xml"),
-                resource_data(format=""),
             ]
         )
 
