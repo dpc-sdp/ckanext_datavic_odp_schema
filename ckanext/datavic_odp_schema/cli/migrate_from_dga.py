@@ -17,6 +17,7 @@ import csv
 import datetime
 import logging
 import os
+import re
 import sys
 import tempfile
 from typing import Any
@@ -26,7 +27,9 @@ from werkzeug.datastructures import FileStorage
 import click
 import ckanapi
 
+import ckan.model as model
 import ckan.plugins.toolkit as tk
+from ckan.model import Package
 
 from . import dga_client as dga
 
@@ -93,6 +96,7 @@ _REPORT_COLUMNS = [
     "flags",
 ]
 
+PACKAGE_NAME_MAX_LENGTH = getattr(Package, "name_max_length", 100)
 
 # ---------------------------------------------------------------------------
 # Helpers — field mapping
@@ -288,8 +292,8 @@ def _migrate_org(
     slug: str,
     writer: csv.DictWriter,
     counters: dict,
-) -> str | None:
-    """Migrate a single org (AC1). Returns the DV org id, or None on failure."""
+) -> tuple[str, str] | None:
+    """Migrate a single org (AC1). Returns the DV (org_id, org_email), or None on failure."""
     try:
         dga_org = dga.org_show(client, slug)
     except Exception as exc:
@@ -299,12 +303,13 @@ def _migrate_org(
         return None
 
     dga_id = dga_org["id"]
+    dga_org_email = (dga_org.get("email") or "").strip()
 
     if _dv_org_exists(dga_id):
         click.secho(f"  org {slug}: already exists on DV — skipping create", fg="yellow")
         writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "skipped"))
         counters["org_skipped"] += 1
-        return dga_id
+        return dga_id, dga_org_email
 
     # Build org payload
     org_data: dict[str, Any] = {
@@ -352,7 +357,8 @@ def _migrate_org(
     click.secho(f"  org {slug}: created (id={dga_id})", fg="green")
     writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "created"))
     counters["org_created"] += 1
-    return dga_id
+    
+    return dga_id, dga_org_email
 
 
 def _image_suffix(url: str) -> str:
@@ -362,9 +368,24 @@ def _image_suffix(url: str) -> str:
     return ext if ext else ".jpg"
 
 
+def _is_valid_email(value: str) -> bool:
+    value = (value or "").strip()
+    if not value:
+        return False
+
+    validator = tk.get_validator("email_validator")
+
+    try:
+        validator(value, {})
+        return True
+    except tk.Invalid:
+        return False
+
+
 def _build_dataset_payload(
     dga_pkg: dict,
     dv_org_id: str,
+    dv_org_email: str,
     flags_out: list[str],
 ) -> dict[str, Any]:
     """Map a DGA package dict to a DV package_create payload.
@@ -390,6 +411,17 @@ def _build_dataset_payload(
     date_created = dga_pkg.get("temporal_coverage_from") or ""
     dga_name = dga_pkg.get("name") or ""
 
+    contact_point = (dga_pkg.get("contact_point") or "").strip()
+    if _is_valid_email(contact_point):
+        maintainer_email = contact_point
+    else:
+        maintainer_email = (dv_org_email or "").strip()
+        if contact_point:
+            if maintainer_email:
+                flags_out.append("contact_point_not_email_org_email_used")
+            else:
+                flags_out.append("contact_point_not_email_no_fallback")
+
     return {
         "id": dga_pkg["id"],
         "title": dga_pkg.get("title") or "",
@@ -400,7 +432,7 @@ def _build_dataset_payload(
         "owner_org": dv_org_id,
         "license_id": dv_license,
         "data_owner": dga_pkg.get("author") or "",
-        "maintainer_email": dga_pkg.get("contact_point") or "",
+        "maintainer_email": maintainer_email,
         "date_created_data_asset": date_created,
         "update_frequency": dv_freq,
         "full_metadata_url": f"{DGA_BASE_URL}/dataset/{dga_name}" if dga_name else "",
@@ -410,9 +442,39 @@ def _build_dataset_payload(
     }
 
 
+def _package_name_exists(name: str) -> bool:
+    validator = tk.get_validator("package_name_exists")
+    try:
+        validator(name, {"model": model, "session": model.Session})
+        return True
+    except tk.Invalid:
+        return False
+
+
+def _next_available_package_name(base_name: str, max_suffix: int = 999) -> str:
+    base_name = re.sub(r"-+", "-", (base_name or "").strip()).strip("-")
+    if not base_name:
+        base_name = "dataset"
+
+    base_name = base_name[:PACKAGE_NAME_MAX_LENGTH]
+
+    if not _package_name_exists(base_name):
+        return base_name
+
+    for i in range(1, max_suffix + 1):
+        suffix = str(i)
+        candidate = base_name[: PACKAGE_NAME_MAX_LENGTH - len(suffix)] + suffix
+        if not _package_name_exists(candidate):
+            return candidate
+
+    # This is extremely unlikely, but if we exhaust all suffixes, return the base name.
+    return base_name
+
+
 def _migrate_dataset(
     dga_pkg: dict,
     dv_org_id: str,
+    dv_org_email: str,
     org_slug: str,
     writer: csv.DictWriter,
     counters: dict,
@@ -429,8 +491,17 @@ def _migrate_dataset(
         return
 
     flags: list[str] = []
+    reason: str = ""
     try:
-        payload = _build_dataset_payload(dga_pkg, dv_org_id, flags)
+        payload = _build_dataset_payload(dga_pkg, dv_org_id, dv_org_email, flags)
+        original_name = payload["name"]
+        unique_name = _next_available_package_name(original_name)
+
+        if unique_name != original_name:
+            payload["name"] = unique_name
+            flags.append("name_collision_renamed")
+            reason = f"{original_name} -> {unique_name}"
+        
         dv_pkg = tk.get_action("package_create")(_site_context(), payload)
         dv_pkg_id = dv_pkg["id"]
     except Exception as exc:
@@ -442,7 +513,7 @@ def _migrate_dataset(
         return
 
     writer.writerow(
-        _audit_row(org_slug, "dataset", dga_id, dv_pkg_id, dga_name, "created", "", flags)
+        _audit_row(org_slug, "dataset", dga_id, dv_pkg_id, dga_name, "created", reason, flags)
     )
     counters["dataset_created"] += 1
 
@@ -701,10 +772,12 @@ def migrate_from_data_gov_au(
                 click.secho(f"\n--- {slug} ---", fg="cyan", bold=True)
                 sys.stdout.flush()
 
-                dv_org_id = _migrate_org(client, slug, writer, counters)
-                if dv_org_id is None:
+                org_result = _migrate_org(client, slug, writer, counters)
+                if org_result is None:
                     click.secho(f"  Skipping datasets for {slug} (org migration failed)", fg="red")
                     continue
+
+                dv_org_id, dv_org_email = org_result
 
                 dataset_count = 0
                 for dga_pkg in dga.iter_org_packages(client, slug):
@@ -715,6 +788,7 @@ def migrate_from_data_gov_au(
                     _migrate_dataset(
                         dga_pkg=dga_pkg,
                         dv_org_id=dv_org_id,
+                        dv_org_email=dv_org_email,
                         org_slug=slug,
                         writer=writer,
                         counters=counters,
