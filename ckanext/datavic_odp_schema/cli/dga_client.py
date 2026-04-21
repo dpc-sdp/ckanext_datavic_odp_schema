@@ -35,7 +35,7 @@ def org_show(client: ckanapi.RemoteCKAN, slug: str) -> dict:
 
 
 def iter_org_packages(
-    client: ckanapi.RemoteCKAN, dga_org_id: str, batch_size: int = 1000
+    client: ckanapi.RemoteCKAN, org_slug: str, batch_size: int = 1000
 ) -> Iterator[dict]:
     """Yield all public dataset dicts for a DGA org, paginated.
 
@@ -46,11 +46,12 @@ def iter_org_packages(
     start = 0
     while True:
         result = client.action.package_search(
-            fq=f"organization:{dga_org_id}",
+            fq=f"organization:{org_slug}",
             rows=batch_size,
             start=start,
             include_private=False,
         )
+
         packages = result.get("results", [])
         if not packages:
             break
