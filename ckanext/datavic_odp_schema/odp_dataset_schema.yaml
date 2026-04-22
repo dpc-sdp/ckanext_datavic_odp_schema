@@ -168,6 +168,13 @@ dataset_fields:
   help_text: The team or individual responsible for managing this dataset.
 
 - field_name: maintainer_email
+  label: Maintainer email
+  form_placeholder: email
+  validators: ignore_missing email_validator
+  display_group: Custodian
+  form_snippet: text.html
+
+- field_name: contact_point
   label: Point of contact
   form_placeholder: email
   validators: ignore_missing url_email_validator

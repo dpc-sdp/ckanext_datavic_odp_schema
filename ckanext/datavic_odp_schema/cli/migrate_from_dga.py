@@ -382,6 +382,21 @@ def _is_valid_email(value: str) -> bool:
         return False
 
 
+def _is_valid_contact_point(value: str) -> bool:
+    """Return True when value is a valid email or HTTP(S) URL."""
+    value = (value or "").strip()
+    if not value:
+        return False
+    if _is_valid_email(value):
+        return True
+
+    try:
+        parsed = urlparse(value)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
 def _build_dataset_payload(
     dga_pkg: dict,
     dv_org_id: str,
@@ -411,13 +426,15 @@ def _build_dataset_payload(
     date_created = dga_pkg.get("temporal_coverage_from") or ""
     dga_name = dga_pkg.get("name") or ""
 
-    contact_point = (dga_pkg.get("contact_point") or "").strip()
-    if _is_valid_email(contact_point):
-        maintainer_email = contact_point
+    dga_contact_point = (dga_pkg.get("contact_point") or "").strip()
+    if _is_valid_contact_point(dga_contact_point):
+        contact_point = dga_contact_point
     else:
-        maintainer_email = (dv_org_email or "").strip()
-        if contact_point:
-            if maintainer_email:
+        contact_point = (dv_org_email or "").strip()
+        if contact_point and not _is_valid_contact_point(contact_point):
+            contact_point = ""
+        if dga_contact_point:
+            if contact_point:
                 flags_out.append("contact_point_not_email_org_email_used")
             else:
                 flags_out.append("contact_point_not_email_no_fallback")
@@ -432,7 +449,7 @@ def _build_dataset_payload(
         "owner_org": dv_org_id,
         "license_id": dv_license,
         "data_owner": dga_pkg.get("author") or "",
-        "maintainer_email": maintainer_email,
+        "contact_point": contact_point,
         "date_created_data_asset": date_created,
         "update_frequency": dv_freq,
         "full_metadata_url": f"{DGA_BASE_URL}/dataset/{dga_name}" if dga_name else "",
