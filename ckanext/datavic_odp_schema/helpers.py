@@ -5,6 +5,7 @@ import math
 
 from datetime import datetime
 from dateutil.parser import ParserError, parse as parse_date
+from sqlalchemy import func
 from typing import Any, Optional
 
 import ckan.model as model
@@ -91,6 +92,18 @@ def get_group(group: Optional[str] = None,
         )
     except (tk.NotFound, tk.ValidationError, tk.NotAuthorized):
         return {}
+
+
+def format_list() -> list[str]:
+    """Return a sorted list of unique, non-empty resource formats."""
+    cleaned_format = func.lower(func.trim(model.Resource.format))
+    query = (
+        model.Session.query(func.distinct(cleaned_format))
+        .filter(model.Resource.state == model.State.ACTIVE)
+        .filter(model.Resource.format.isnot(None))
+        .filter(model.Resource.format != "")
+    )
+    return sorted({fmt.upper().split(".")[-1] for (fmt,) in query})
 
 
 def localized_filesize(size_bytes: int) -> str:
