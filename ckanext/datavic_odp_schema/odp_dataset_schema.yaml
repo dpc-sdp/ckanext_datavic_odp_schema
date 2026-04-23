@@ -167,7 +167,7 @@ dataset_fields:
   form_snippet: text.html
   help_text: The team or individual responsible for managing this dataset.
 
-- field_name: maintainer_email
+- field_name: contact_point
   label: Point of contact
   form_placeholder: email
   validators: ignore_missing url_email_validator

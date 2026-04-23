@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import json
 import logging
 import os
 import re
@@ -41,6 +42,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_CSV_PATH = "/app/ckan/default/vic-councils.csv"
 DEFAULT_REPORT_DIR = "/app/filestore/datagov_migration"
+DEFAULT_BACKUP_DIR = "/app/filestore/datagov_migration/backups"
 
 DGA_BASE_URL = dga.DGA_BASE_URL
 
@@ -250,6 +252,36 @@ def _audit_row(
 
 
 # ---------------------------------------------------------------------------
+# Helpers — DGA payload JSON capture
+# ---------------------------------------------------------------------------
+
+
+def _save_payload_json(data: list | dict, backup_dir: str, filename: str) -> str:
+    """Save data as JSON and return the file path.
+
+    Uses default=str for json.dump to handle datetime and other non-serializable objects.
+    """
+    os.makedirs(backup_dir, exist_ok=True)
+    filepath = os.path.join(backup_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+    return filepath
+
+
+def _make_backup_run_dir(backup_dir: str) -> str:
+    """Create a timestamped backup directory for this migration run."""
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(backup_dir, ts)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _safe_filename_part(value: str) -> str:
+    """Return a filesystem-safe token for JSON capture filenames."""
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "unknown"
+
+
+# ---------------------------------------------------------------------------
 # CKAN action context
 # ---------------------------------------------------------------------------
 
@@ -290,6 +322,7 @@ def _dv_dataset_exists(dataset_id: str) -> bool:
 def _migrate_org(
     client: ckanapi.RemoteCKAN,
     slug: str,
+    backup_run_dir: str,
     writer: csv.DictWriter,
     counters: dict,
 ) -> tuple[str, str] | None:
@@ -301,6 +334,13 @@ def _migrate_org(
         writer.writerow(_audit_row(slug, "org", "", "", slug, "failed", str(exc)))
         counters["org_failed"] += 1
         return None
+
+    try:
+        safe_slug = _safe_filename_part(slug)
+        filepath = _save_payload_json(dga_org, backup_run_dir, f"org_{safe_slug}.json")
+        log.info("Saved DGA org_show payload to %s", filepath)
+    except Exception as exc:
+        log.warning("Failed to save org_show payload for %s: %s", slug, exc)
 
     dga_id = dga_org["id"]
     dga_org_email = (dga_org.get("email") or "").strip()
@@ -357,7 +397,7 @@ def _migrate_org(
     click.secho(f"  org {slug}: created (id={dga_id})", fg="green")
     writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "created"))
     counters["org_created"] += 1
-    
+
     return dga_id, dga_org_email
 
 
@@ -380,6 +420,21 @@ def _is_valid_email(value: str) -> bool:
         return True
     except tk.Invalid:
         return False
+
+
+def _is_valid_contact_point(value: str) -> bool:
+    """Return True when value is a valid email or HTTP(S) URL."""
+    value = (value or "").strip()
+    if not value:
+        return False
+    if _is_valid_email(value):
+        return True
+
+    try:
+        parsed = urlparse(value)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 def _build_dataset_payload(
@@ -411,13 +466,15 @@ def _build_dataset_payload(
     date_created = dga_pkg.get("temporal_coverage_from") or ""
     dga_name = dga_pkg.get("name") or ""
 
-    contact_point = (dga_pkg.get("contact_point") or "").strip()
-    if _is_valid_email(contact_point):
-        maintainer_email = contact_point
+    dga_contact_point = (dga_pkg.get("contact_point") or "").strip()
+    if _is_valid_contact_point(dga_contact_point):
+        contact_point = dga_contact_point
     else:
-        maintainer_email = (dv_org_email or "").strip()
-        if contact_point:
-            if maintainer_email:
+        contact_point = (dv_org_email or "").strip()
+        if contact_point and not _is_valid_contact_point(contact_point):
+            contact_point = ""
+        if dga_contact_point:
+            if contact_point:
                 flags_out.append("contact_point_not_email_org_email_used")
             else:
                 flags_out.append("contact_point_not_email_no_fallback")
@@ -432,7 +489,7 @@ def _build_dataset_payload(
         "owner_org": dv_org_id,
         "license_id": dv_license,
         "data_owner": dga_pkg.get("author") or "",
-        "maintainer_email": maintainer_email,
+        "contact_point": contact_point,
         "date_created_data_asset": date_created,
         "update_frequency": dv_freq,
         "full_metadata_url": f"{DGA_BASE_URL}/dataset/{dga_name}" if dga_name else "",
@@ -550,6 +607,7 @@ def _migrate_resource(
     dga_res_id = resource.get("id") or ""
     res_name = _resource_name(resource)
     url = resource.get("url") or ""
+    dga_last_modified = (resource.get("last_modified") or "").strip()
     flags: list[str] = []
 
     base_payload: dict[str, Any] = {
@@ -563,6 +621,11 @@ def _migrate_resource(
     }
     if resource.get("size"):
         base_payload["filesize"] = resource["size"]
+    # Preserve DGA's last_modified so that, after harvest back to DGA, the
+    # geoserver ingest gate sees source SHP/KML and generated WMS/WFS/KML/
+    # GeoJSON resources sharing a timestamp and skips re-ingest.
+    if dga_last_modified:
+        base_payload["last_modified"] = dga_last_modified
 
     is_upload = resource.get("url_type") == "upload"
 
@@ -593,6 +656,21 @@ def _migrate_resource(
                     content_type="application/octet-stream",
                 )
                 dv_res = tk.get_action("resource_create")(_site_context(), resource_payload)
+            # CKAN's upload pipeline stamps last_modified to the upload time,
+            # overwriting whatever was in the create payload. Patch it back so
+            # the value carried in base_payload actually persists.
+            if dga_last_modified:
+                try:
+                    tk.get_action("resource_patch")(
+                        _site_context(),
+                        {"id": dv_res["id"], "last_modified": dga_last_modified},
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "resource_patch (last_modified) failed for %r in pkg %s: %s",
+                        res_name, dga_pkg_id, exc,
+                    )
+                    flags.append("last_modified_patch_failed")
             writer.writerow(
                 _audit_row(org_slug, "resource", dga_res_id, dv_res["id"], res_name,
                            "created", "", flags)
@@ -694,6 +772,12 @@ def _res_suffix(name: str) -> str:
     show_default=True,
     help="Directory for the per-run audit CSV report.",
 )
+@click.option(
+    "--backup-dir",
+    default=DEFAULT_BACKUP_DIR,
+    show_default=True,
+    help="Directory for JSON backups of org and package payloads from data.gov.au.",
+)
 @click.pass_context
 def migrate_from_data_gov_au(
     ctx: click.Context,
@@ -701,6 +785,7 @@ def migrate_from_data_gov_au(
     max_filesize_mb: int,
     csv_path: str,
     report_dir: str,
+    backup_dir: str,
 ) -> None:
     """Migrate Victorian local council orgs, datasets, and resources from data.gov.au to DataVic.
 
@@ -733,7 +818,9 @@ def migrate_from_data_gov_au(
     click.secho(f"Orgs to migrate: {len(councils)}", fg="blue")
     click.secho(f"Max file size:   {max_filesize_mb} MB", fg="blue")
     click.secho(f"Council CSV:     {csv_path}", fg="blue")
-    click.secho(f"Report dir:      {report_dir}\n", fg="blue")
+    click.secho(f"Report dir:      {report_dir}", fg="blue")
+    backup_run_dir = _make_backup_run_dir(backup_dir)
+    click.secho(f"Backup dir:      {backup_run_dir}\n", fg="blue")
     sys.stdout.flush()
 
     report_path = _make_report_path(report_dir)
@@ -772,7 +859,7 @@ def migrate_from_data_gov_au(
                 click.secho(f"\n--- {slug} ---", fg="cyan", bold=True)
                 sys.stdout.flush()
 
-                org_result = _migrate_org(client, slug, writer, counters)
+                org_result = _migrate_org(client, slug, backup_run_dir, writer, counters)
                 if org_result is None:
                     click.secho(f"  Skipping datasets for {slug} (org migration failed)", fg="red")
                     continue
@@ -780,11 +867,28 @@ def migrate_from_data_gov_au(
                 dv_org_id, dv_org_email = org_result
 
                 dataset_count = 0
-                for dga_pkg in dga.iter_org_packages(client, slug):
+                org_packages = list(dga.iter_org_packages(client, slug))
+
+                try:
+                    safe_slug = _safe_filename_part(slug)
+                    filepath = _save_payload_json(
+                        org_packages, backup_run_dir, f"datasets_{safe_slug}.json"
+                    )
+                    log.info(
+                        "Saved DGA iter_org_packages payload (%s packages) to %s",
+                        len(org_packages),
+                        filepath,
+                    )
+                except Exception as exc:
+                    log.warning("Failed to save iter_org_packages payload for %s: %s", slug, exc)
+
+                for dga_pkg in org_packages:
                     dataset_count += 1
+
                     if dataset_count % 50 == 0:
                         click.secho(f"  ... {dataset_count} datasets processed", fg="blue")
                         sys.stdout.flush()
+
                     _migrate_dataset(
                         dga_pkg=dga_pkg,
                         dv_org_id=dv_org_id,
