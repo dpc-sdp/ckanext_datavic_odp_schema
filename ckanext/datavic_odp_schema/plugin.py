@@ -22,10 +22,10 @@ class DatavicODPSchema(p.SingletonPlugin):
 
     # IPackageController
     def after_dataset_show(self, context, pkg_dict):
-        pkg_dict.pop("maintainer_email", None)
+        pkg_dict.pop("contact_point", None)
         return pkg_dict
 
     def after_dataset_search(self, search_results, search_params):
         for item in search_results.get("results", []):
-            item.pop("maintainer_email", None)
+            item.pop("contact_point", None)
         return search_results
