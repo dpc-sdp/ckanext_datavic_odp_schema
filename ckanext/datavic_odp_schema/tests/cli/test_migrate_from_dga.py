@@ -677,3 +677,240 @@ class TestMigrateCommand:
         assert upload_resource is not None, (
             f"Expected a resource with DGA URL, got: {created_resources}"
         )
+
+    # ----- last_modified preservation (geoserver re-ingest gate) -----------
+    #
+    # DGA's ``_do_geoserver_ingest`` skips re-ingest after harvest when source
+    # SHP/KML and generated WMS/WFS/KML/GeoJSON resources share a
+    # ``last_modified`` timestamp.  The migration must round-trip DGA's value
+    # onto every DV resource, and on uploads must follow up with
+    # ``resource_patch`` because CKAN's upload pipeline auto-stamps the field.
+    #
+    # These tests intercept ``resource_create`` / ``resource_patch`` (same
+    # pattern as ``test_first_run_creates_org_and_dataset``) so they exercise
+    # the migration's data flow without depending on the real CKAN upload
+    # pipeline, which the minimal ``app_context`` Flask stub can't satisfy.
+
+    DGA_LAST_MODIFIED_LINK = "2019-07-12T00:00:00"
+    DGA_LAST_MODIFIED_UPLOAD = "2015-06-10T00:00:00"
+
+    @staticmethod
+    def _dga_resources_with_last_modified(dga_pkg: dict) -> None:
+        """Tag the linked and upload fixture resources with historical timestamps."""
+        for r in dga_pkg["resources"]:
+            if r["url_type"] == "upload":
+                r["last_modified"] = TestMigrateCommand.DGA_LAST_MODIFIED_UPLOAD
+            else:
+                r["last_modified"] = TestMigrateCommand.DGA_LAST_MODIFIED_LINK
+
+    @staticmethod
+    def _fake_download(url, dest_path, max_bytes):
+        with open(dest_path, "wb") as f:
+            f.write(b"CSV,DATA\n1,2\n")
+        return 14
+
+    @staticmethod
+    def _mock_package_create(_context, data_dict):
+        return {"id": data_dict.get("id"), "name": data_dict.get("name")}
+
+    @staticmethod
+    def _make_resource_create_recorder(records: list[dict]):
+        def mock_resource_create(_context, data_dict):
+            captured = {k: v for k, v in data_dict.items() if k != "upload"}
+            captured["_had_upload"] = "upload" in data_dict
+            records.append(captured)
+            return {"id": captured.get("id") or f"res-{len(records)}",
+                    "url": captured.get("url", "")}
+        return mock_resource_create
+
+    def _invoke_migration(self, csv_path: str, tmp_path) -> Any:
+        from click.testing import CliRunner
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+
+        return CliRunner().invoke(
+            migrate_from_data_gov_au,
+            ["--org", "test-council", "--csv-path", csv_path,
+             "--report-dir", str(tmp_path / "reports")],
+            catch_exceptions=False,
+        )
+
+    @pytest.mark.usefixtures("category_group")
+    def test_uploaded_resource_last_modified_patched_after_create(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """For uploads, ``resource_patch`` must be called with DGA's ``last_modified``
+        to overwrite the auto-stamp the upload pipeline applies."""
+        import ckan.plugins.toolkit as tk
+
+        _, _, dga_pkg = mock_dga
+        self._dga_resources_with_last_modified(dga_pkg)
+
+        created: list[dict] = []
+        patched: list[dict] = []
+        original_get_action = tk.get_action
+
+        def mock_resource_patch(_context, data_dict):
+            patched.append(dict(data_dict))
+            return {"id": data_dict["id"]}
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+                resource_patch=mock_resource_patch,
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        # Exactly one patch, against the upload resource, with DGA's timestamp.
+        upload_patches = [p for p in patched if "last_modified" in p]
+        assert len(upload_patches) == 1, (
+            f"expected one last_modified patch, got: {patched}"
+        )
+        assert upload_patches[0]["last_modified"] == self.DGA_LAST_MODIFIED_UPLOAD
+
+    @pytest.mark.usefixtures("category_group")
+    def test_linked_resource_last_modified_passes_through_create(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """For non-uploads the value is supplied to ``resource_create`` directly."""
+        import ckan.plugins.toolkit as tk
+
+        _, _, dga_pkg = mock_dga
+        self._dga_resources_with_last_modified(dga_pkg)
+
+        created: list[dict] = []
+        original_get_action = tk.get_action
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        link_payload = next(c for c in created if not c["_had_upload"])
+        assert link_payload["last_modified"] == self.DGA_LAST_MODIFIED_LINK
+
+    @pytest.mark.usefixtures("category_group")
+    def test_missing_last_modified_skips_patch(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """When DGA has no ``last_modified``, no patch is attempted and the create payload omits the field."""
+        import ckan.plugins.toolkit as tk
+
+        # Default _make_dga_package has no last_modified — leave as-is.
+        created: list[dict] = []
+        patched: list[dict] = []
+        original_get_action = tk.get_action
+
+        def mock_resource_patch(_context, data_dict):
+            patched.append(dict(data_dict))
+            return {"id": data_dict["id"]}
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+                resource_patch=mock_resource_patch,
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        assert all("last_modified" not in c for c in created), (
+            f"unexpected last_modified in create payloads: {created}"
+        )
+        assert all("last_modified" not in p for p in patched), (
+            f"unexpected last_modified patch: {patched}"
+        )
+
+    @pytest.mark.usefixtures("category_group")
+    def test_last_modified_patch_failure_flagged_in_audit(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """When ``resource_patch`` raises, the upload still succeeds and the audit row is flagged."""
+        import ckan.plugins.toolkit as tk
+
+        _, _, dga_pkg = mock_dga
+        self._dga_resources_with_last_modified(dga_pkg)
+        report_dir = tmp_path / "reports"
+
+        created: list[dict] = []
+        original_get_action = tk.get_action
+
+        def failing_resource_patch(_context, _data_dict):
+            raise RuntimeError("simulated patch failure")
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+                resource_patch=failing_resource_patch,
+            ),
+        ):
+            from click.testing import CliRunner
+            from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+
+            result = CliRunner().invoke(
+                migrate_from_data_gov_au,
+                ["--org", "test-council", "--csv-path", csv_path,
+                 "--report-dir", str(report_dir)],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0, result.output
+
+        # Upload still ran despite the patch failure.
+        assert any(c["_had_upload"] for c in created), (
+            f"expected the upload resource_create to have been attempted, got: {created}"
+        )
+
+        from pathlib import Path
+        report_files = sorted(Path(report_dir).glob("datagov_migration_*.csv"))
+        assert len(report_files) == 1
+        with open(report_files[0]) as fh:
+            rows = list(csv.DictReader(fh))
+        upload_rows = [
+            r for r in rows
+            if r["stage"] == "resource" and r["dga_id"] == DGA_RES_UPLOAD_ID
+        ]
+        assert len(upload_rows) == 1
+        assert "last_modified_patch_failed" in upload_rows[0]["flags"], (
+            f"expected 'last_modified_patch_failed' in flags, "
+            f"got: {upload_rows[0]['flags']!r}"
+        )

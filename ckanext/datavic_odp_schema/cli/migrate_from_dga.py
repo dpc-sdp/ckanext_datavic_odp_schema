@@ -607,6 +607,7 @@ def _migrate_resource(
     dga_res_id = resource.get("id") or ""
     res_name = _resource_name(resource)
     url = resource.get("url") or ""
+    dga_last_modified = (resource.get("last_modified") or "").strip()
     flags: list[str] = []
 
     base_payload: dict[str, Any] = {
@@ -620,6 +621,11 @@ def _migrate_resource(
     }
     if resource.get("size"):
         base_payload["filesize"] = resource["size"]
+    # Preserve DGA's last_modified so that, after harvest back to DGA, the
+    # geoserver ingest gate sees source SHP/KML and generated WMS/WFS/KML/
+    # GeoJSON resources sharing a timestamp and skips re-ingest.
+    if dga_last_modified:
+        base_payload["last_modified"] = dga_last_modified
 
     is_upload = resource.get("url_type") == "upload"
 
@@ -650,6 +656,21 @@ def _migrate_resource(
                     content_type="application/octet-stream",
                 )
                 dv_res = tk.get_action("resource_create")(_site_context(), resource_payload)
+            # CKAN's upload pipeline stamps last_modified to the upload time,
+            # overwriting whatever was in the create payload. Patch it back so
+            # the value carried in base_payload actually persists.
+            if dga_last_modified:
+                try:
+                    tk.get_action("resource_patch")(
+                        _site_context(),
+                        {"id": dv_res["id"], "last_modified": dga_last_modified},
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "resource_patch (last_modified) failed for %r in pkg %s: %s",
+                        res_name, dga_pkg_id, exc,
+                    )
+                    flags.append("last_modified_patch_failed")
             writer.writerow(
                 _audit_row(org_slug, "resource", dga_res_id, dv_res["id"], res_name,
                            "created", "", flags)
