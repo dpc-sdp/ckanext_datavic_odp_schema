@@ -492,7 +492,6 @@ def _build_dataset_payload(
         "contact_point": contact_point,
         "date_created_data_asset": date_created,
         "update_frequency": dv_freq,
-        "full_metadata_url": f"{DGA_BASE_URL}/dataset/{dga_name}" if dga_name else "",
         "category": FIXED_CATEGORY,
         "personal_information": FIXED_PERSONAL_INFO,
         "private": False,
