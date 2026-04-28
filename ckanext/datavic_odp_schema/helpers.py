@@ -129,3 +129,7 @@ def localized_filesize(size_bytes: int) -> str:
     s = round(float(size_bytes) / p, 1)
 
     return f"{s} {size_name[i]}"
+
+
+def show_data_publisher_notice(pkg_dict: dict[str, Any]) -> bool:
+    return not tk.asbool(pkg_dict.get("vps_dataset", True))

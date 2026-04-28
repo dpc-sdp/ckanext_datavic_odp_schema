@@ -183,6 +183,11 @@ dataset_fields:
   display_snippet: null
   form_snippet: vic_hidden.html
 
+- field_name: vps_dataset
+  display_snippet: null
+  form_snippet: vic_hidden.html
+  validators: default(false) boolean_validator
+
 resource_fields:
 
 - field_name: url
