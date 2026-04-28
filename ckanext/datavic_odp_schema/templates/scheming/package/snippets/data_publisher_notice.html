@@ -1,0 +1,12 @@
+<section class="additional-info">
+  <h3>{{ _('Data source')}}</h3>
+
+  <p>
+    {% if pkg_dict.organization %}
+      <a href="{{ h.url_for('organization.read', id=pkg_dict.organization.name) }}">
+        {{ pkg_dict.organization.title or pkg_dict.organization.name }}
+      </a><br/>
+    {% endif %}
+    {{ _('Responsibility for legislative and policy compliance rests with the publisher.') }}
+  </p>
+</section>
