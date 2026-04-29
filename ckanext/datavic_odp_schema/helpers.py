@@ -5,6 +5,7 @@ import math
 
 from datetime import datetime
 from dateutil.parser import ParserError, parse as parse_date
+from sqlalchemy import func
 from typing import Any, Optional
 
 import ckan.model as model
@@ -63,7 +64,7 @@ def date_str_to_timestamp(date: str) -> Optional[int]:
     """Parses date string and return it as a timestamp integer"""
     try:
         date_obj: datetime = parse_date(date)
-    except (ParserError, TypeError) as e:
+    except (ParserError, TypeError):
         return log.error("Error parsing date from %s", date)
 
     return int(date_obj.timestamp())
@@ -93,6 +94,18 @@ def get_group(group: Optional[str] = None,
         return {}
 
 
+def format_list() -> list[str]:
+    """Return a sorted list of unique, non-empty resource formats."""
+    cleaned_format = func.lower(func.trim(model.Resource.format))
+    query = (
+        model.Session.query(func.distinct(cleaned_format))
+        .filter(model.Resource.state == model.State.ACTIVE)
+        .filter(model.Resource.format.isnot(None))
+        .filter(model.Resource.format != "")
+    )
+    return sorted({fmt.upper().split(".")[-1] for (fmt,) in query})
+
+
 def localized_filesize(size_bytes: int) -> str:
     """Returns a localized unicode representation of a number in bytes, MB
     etc.
@@ -116,3 +129,21 @@ def localized_filesize(size_bytes: int) -> str:
     s = round(float(size_bytes) / p, 1)
 
     return f"{s} {size_name[i]}"
+
+
+def show_data_publisher_notice(pkg_dict: dict[str, Any]) -> bool:
+    """Return True to show the Data publisher notice on the dataset read page.
+
+    If ``vps_dataset`` is missing or blank, return False (no notice). If set to a
+    string CKAN can parse as true/false, show the notice when the value is false
+    for the VPS-lane policy. If the value is not a valid boolean string, return
+    False (no notice) so ``asbool`` does not raise on the read view.
+    """
+    vps_dataset = pkg_dict.get("vps_dataset")
+    if vps_dataset is None or str(vps_dataset).strip() == "":
+        return False
+    try:
+        return not tk.asbool(vps_dataset)
+    except ValueError:
+        return False
+

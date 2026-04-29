@@ -6,7 +6,7 @@ import ckan.plugins.toolkit as tk
 import ckan.views.api as api
 from ckan import types
 
-from ckanext.datavic_odp_theme import helpers
+from ckanext.datavic_odp_schema import helpers
 
 
 log = logging.getLogger(__name__)
