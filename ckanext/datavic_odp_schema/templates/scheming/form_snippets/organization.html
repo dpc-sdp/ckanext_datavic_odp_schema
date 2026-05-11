@@ -1,0 +1,21 @@
+{% ckan_extends %}
+
+{% block package_metadata_fields_visibility %}
+  <div class="control-group form-group control-medium">
+    <label for="field-private" class="control-label">
+      <span title="This field is required" class="control-required">*</span>
+      {{ _('Visibility') }}
+    </label>
+    <div class="controls">
+      <select id="field-private" name="private" class="form-control">
+        {% for option in [('True', _('Private')), ('False', _('Public'))] %}
+        <option value="{{ option[0] }}" {% if option[0] == data.private|trim %}selected="selected"{% endif %}>{{ option[1] }}</option>
+        {% endfor %}
+      </select>
+      <div class="info-block ">
+        <i class="fa fa-info-circle"></i>
+        {{ _('Make the dataset available to the public or restrict it to members of your organisation.') }}
+      </div>
+    </div>
+  </div>
+{% endblock %}
