@@ -129,21 +129,3 @@ def localized_filesize(size_bytes: int) -> str:
     s = round(float(size_bytes) / p, 1)
 
     return f"{s} {size_name[i]}"
-
-
-def show_data_publisher_notice(pkg_dict: dict[str, Any]) -> bool:
-    """Return True to show the Data publisher notice on the dataset read page.
-
-    If ``vps_dataset`` is missing or blank, return False (no notice). If set to a
-    string CKAN can parse as true/false, show the notice when the value is false
-    for the VPS-lane policy. If the value is not a valid boolean string, return
-    False (no notice) so ``asbool`` does not raise on the read view.
-    """
-    vps_dataset = pkg_dict.get("vps_dataset")
-    if vps_dataset is None or str(vps_dataset).strip() == "":
-        return False
-    try:
-        return not tk.asbool(vps_dataset)
-    except ValueError:
-        return False
-
