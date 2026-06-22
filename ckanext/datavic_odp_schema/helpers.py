@@ -5,11 +5,8 @@ import math
 
 from datetime import datetime
 from dateutil.parser import ParserError, parse as parse_date
-from ckan.lib.navl.dictization_functions import Invalid
-from ckan.logic.validators import email_validator as ckan_email_validator
 from sqlalchemy import func
 from typing import Any, Optional
-from urllib.parse import urlparse
 
 import ckan.model as model
 import ckan.plugins.toolkit as tk
@@ -134,26 +131,12 @@ def localized_filesize(size_bytes: int) -> str:
     return f"{s} {size_name[i]}"
 
 
-def is_url(value) -> bool:
-    if not value:
-        return False
-
-    try:
-        parsed = urlparse(value)
-        if parsed.scheme and parsed.netloc and parsed.scheme in ("http", "https"):
-            return True
-    except (ValueError, TypeError):
-        pass
-
-    return False
-
-
 def is_email(value) -> bool:
     if not value:
         return False
 
     try:
-        ckan_email_validator(value, {})
+        tk.get_validator("email_validator")(value, {})
         return True
-    except Invalid:
+    except tk.Invalid:
         return False
