@@ -129,3 +129,14 @@ def localized_filesize(size_bytes: int) -> str:
     s = round(float(size_bytes) / p, 1)
 
     return f"{s} {size_name[i]}"
+
+
+def is_email(value) -> bool:
+    if not value:
+        return False
+
+    try:
+        tk.get_validator("email_validator")(value, {})
+        return True
+    except tk.Invalid:
+        return False
