@@ -2,8 +2,5 @@
 
 {% block primary_content_inner %}
   {{ super() }}
-
-  {% if h.show_data_publisher_notice(pkg) %}
-    {% snippet "scheming/package/snippets/data_publisher_notice.html", pkg_dict=pkg %}
-  {% endif %}
+  {% snippet "scheming/package/snippets/data_publisher_notice.html", pkg_dict=pkg %}
 {% endblock %}

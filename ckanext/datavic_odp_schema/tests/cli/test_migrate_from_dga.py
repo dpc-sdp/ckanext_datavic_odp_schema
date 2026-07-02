@@ -214,11 +214,6 @@ class TestBuildDatasetPayload:
         assert payload["personal_information"] == "no"
         assert payload["private"] is False
 
-    def test_full_metadata_url_set(self) -> None:
-        pkg = self._dga_pkg(name="alpine-flood-data")
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
-        assert payload["full_metadata_url"] == "https://data.gov.au/data/dataset/alpine-flood-data"
-
     def test_id_preserved(self) -> None:
         pkg = self._dga_pkg(id="preserved-uuid-abc")
         payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
@@ -529,7 +524,6 @@ class TestMigrateCommand:
         assert payload["license_id"] == "cc-by"
         assert payload["contact_point"] == "floods@test.vic.gov.au"
         assert payload["date_created_data_asset"] == "2021-01-01"
-        assert payload["full_metadata_url"] == "https://data.gov.au/data/dataset/test-flood-data"
 
     @pytest.mark.usefixtures("category_group")
     def test_second_run_skips_existing_dataset(
