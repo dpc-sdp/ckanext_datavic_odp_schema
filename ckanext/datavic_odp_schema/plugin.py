@@ -8,8 +8,8 @@ from ckanext.datavic_odp_schema import validators
 log = logging.getLogger(__name__)
 
 
-def _action_context():
-    """Return the CKAN action context stored on the current SQLAlchemy session."""
+def _session_context():
+    """Fallback for hooks that receive no context (e.g. after_dataset_search)."""
     try:
         session = tk.ckan.model.Session()
         return getattr(session, "_context", None) or {}
@@ -17,11 +17,14 @@ def _action_context():
         return {}
 
 
-def _is_api_request():
-    return bool(_action_context().get("api_version"))
+def _is_api_request(context=None):
+    """True for public API reads; false for internal write-time reads (for_update) or non-API calls."""
+    ctx = context if context is not None else _session_context()
+    return bool(ctx.get("api_version")) and not ctx.get("for_update")
 
 
 def _strip_custodian_fields(pkg_dict):
+    """Remove sensitive custodian fields before returning a package dict to the public API."""
     pkg_dict.pop("maintainer_email", None)
     pkg_dict.pop("data_owner", None)
 
@@ -40,7 +43,7 @@ class DatavicODPSchema(p.SingletonPlugin):
 
     # IPackageController
     def after_dataset_show(self, context, pkg_dict):
-        if _is_api_request():
+        if _is_api_request(context):
             _strip_custodian_fields(pkg_dict)
         return pkg_dict
 
