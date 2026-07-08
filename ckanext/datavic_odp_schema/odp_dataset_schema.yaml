@@ -171,7 +171,7 @@ dataset_fields:
 - field_name: contact_point
   label: Point of contact
   form_placeholder: Valid email or URL
-  validators: url_email_validator
+  validators: not_empty url_email_validator
   display_group: Custodian
   form_snippet: text.html
   help_text: Shared inbox or contact form for user queries e.g. https://data.melbourne.vic.gov.au/pages/contact_us_form/
