@@ -116,7 +116,15 @@
         {% if pkg_dict.contact_point %}
           <tr>
             <th scope="row" class="dataset-label">{{ _("Point of contact") }}</th>
-            <td class="dataset-details">{{ pkg_dict.contact_point }}</td>
+            <td class="dataset-details">
+              {% if h.is_url(pkg_dict.contact_point) %}
+                <a href="{{ pkg_dict.contact_point }}" target="_blank" rel="nofollow">{{ pkg_dict.contact_point }}</a>
+              {% elif h.is_email(pkg_dict.contact_point) %}
+                <a href="mailto:{{ pkg_dict.contact_point }}">{{ pkg_dict.contact_point }}</a>
+              {% else %}
+                {{ pkg_dict.contact_point }}
+              {% endif %}
+            </td>
           </tr>
         {% endif %}
       {% endblock %}
