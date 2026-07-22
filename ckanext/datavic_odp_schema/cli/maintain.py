@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 import click
-import mimetypes
 import os
 import shutil
 import tqdm
@@ -407,18 +406,12 @@ def cleanup_group_images(dry_run: bool):
 
     unused_dir = os.path.join(storage_path, "_unused")
 
-    allowed_mimetypes: list[str] = tk.config.get(
-        "ckan.upload.group.mimetypes", ["image/png", "image/gif", "image/jpeg"]
-    )
-
     disk_files: list[str] = []
     for filename in os.listdir(storage_path):
         filepath = os.path.join(storage_path, filename)
         if not os.path.isfile(filepath):
             continue
-        mimetype, _ = mimetypes.guess_type(filename)
-        if mimetype in allowed_mimetypes:
-            disk_files.append(filename)
+        disk_files.append(filename)
 
     unused: list[str] = []
     for filename in disk_files:
