@@ -23,11 +23,14 @@ def _ensure_category_group() -> str:
     except tk.ObjectNotFound:
         site_user = tk.get_action("get_site_user")({"ignore_auth": True}, {})
         ctx = {"ignore_auth": True, "user": site_user["name"]}
-        tk.get_action("group_create")(ctx, {
-            "id": _CATEGORY_ID,
-            "name": "data-themes",
-            "title": "Data Themes",
-        })
+        tk.get_action("group_create")(
+            ctx,
+            {
+                "id": _CATEGORY_ID,
+                "name": "data-themes",
+                "title": "Data Themes",
+            },
+        )
     return _CATEGORY_ID
 
 
@@ -52,6 +55,13 @@ class DatasetFactory(factories.Dataset):
 
 
 register(DatasetFactory, "dataset")
+
+
+class UserFactory(factories.User):
+    pass
+
+
+register(UserFactory, "user")
 
 
 class GroupFactory(factories.Group):

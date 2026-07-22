@@ -1,5 +1,6 @@
 import logging
 
+import ckan.authz as authz
 import ckan.plugins as p
 import ckan.plugins.toolkit as tk
 
@@ -23,10 +24,30 @@ def _is_api_request(context=None):
     return bool(ctx.get("api_version")) and not ctx.get("for_update")
 
 
-def _strip_custodian_fields(pkg_dict):
-    """Remove sensitive custodian fields before returning a package dict to the public API."""
+def _is_sysadmin(context=None):
+    """Return True if the requesting user is a sysadmin, False otherwise (fail-closed)."""
+    ctx = context if context is not None else _session_context()
+    user = ctx.get("user")
+    if not user:
+        return False
+    try:
+        return authz.is_sysadmin(user)
+    except Exception:
+        log.warning(
+            "Could not determine sysadmin status for custodian stripping",
+            exc_info=True,
+        )
+        return False
+
+
+def _strip_custodian_fields(pkg_dict, is_sysadmin=False):
+    """Strip custodian fields from a package dict for public API responses.
+
+    maintainer_email is always removed; data_owner is kept for sysadmins.
+    """
     pkg_dict.pop("maintainer_email", None)
-    pkg_dict.pop("data_owner", None)
+    if not is_sysadmin:
+        pkg_dict.pop("data_owner", None)
 
 
 @tk.blanket.blueprints
@@ -44,11 +65,12 @@ class DatavicODPSchema(p.SingletonPlugin):
     # IPackageController
     def after_dataset_show(self, context, pkg_dict):
         if _is_api_request(context):
-            _strip_custodian_fields(pkg_dict)
+            _strip_custodian_fields(pkg_dict, is_sysadmin=_is_sysadmin(context))
         return pkg_dict
 
     def after_dataset_search(self, search_results, search_params):
         if _is_api_request():
+            is_sysadmin = _is_sysadmin()
             for item in search_results.get("results", []):
-                _strip_custodian_fields(item)
+                _strip_custodian_fields(item, is_sysadmin=is_sysadmin)
         return search_results
