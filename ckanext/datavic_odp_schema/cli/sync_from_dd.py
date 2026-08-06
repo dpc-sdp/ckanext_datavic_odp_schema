@@ -41,6 +41,7 @@ EXTRA_SYNC_FIELDS: list[str] = [
     "category",
     "personal_information",
     "data_owner",
+    "contact_point",
     "custom_licence_link",
     "update_frequency",
 ]
@@ -188,7 +189,7 @@ def sync_syndicated_fields(dry_run: bool, report_path: str | None) -> None:
 
         ckan -c $CKAN_INI search-index rebuild
 
-    Fields synced: category, personal_information, data_owner,
+    Fields synced: category, personal_information, data_owner, contact_point
     custom_licence_link, update_frequency, maintainer_email.
     """
     mode = "DRY-RUN" if dry_run else "SYNC"

@@ -3,12 +3,15 @@ from __future__ import annotations
 import logging
 
 import click
+import os
+import shutil
 import tqdm
 from sqlalchemy.exc import SQLAlchemyError
 
 import ckan.logic as logic
 import ckan.model as model
 import ckan.plugins.toolkit as tk
+from ckan.lib.uploader import get_uploader
 from ckan.model import Resource, ResourceView
 
 from ckanext.datastore.backend import get_all_resources_ids_in_datastore
@@ -402,3 +405,132 @@ def make_datatables_view_prioritized():
         if result.get("updated"):
             number_reordered += 1
     click.secho(f"Reordered {number_reordered} resources", fg="green")
+
+
+@maintain.command("cleanup-group-images")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="List unused images without moving them.",
+)
+def cleanup_group_images(dry_run: bool):
+    """Move unused group/organisation images to a _unused subdirectory.
+
+    Fetches all organisations and groups, collects their image_url values,
+    then compares against files on disk.  Any file not referenced by an active
+    org or group is moved to <storage_path>/_unused for safe manual review.
+    """
+    storage_path = get_uploader("group").storage_path
+
+    if dry_run:
+        click.secho("Dry-run mode — no files will be moved.", fg="blue")
+
+    try:
+        referenced = _collect_referenced_group_images()
+    except Exception as e:
+        click.secho(f"Aborting: could not collect referenced images: {e}", fg="red")
+        log.error("cleanup-group-images aborted during collection: %s", e)
+        return
+
+    click.secho(
+        f"Found {len(referenced)} referenced image filename(s) across all orgs/groups.",
+        fg="green",
+    )
+
+    if not os.path.isdir(storage_path):
+        click.secho(f"Storage path does not exist: {storage_path}", fg="red")
+        return
+
+    unused_dir = os.path.join(storage_path, "_unused")
+
+    disk_files: list[str] = []
+    for filename in os.listdir(storage_path):
+        filepath = os.path.join(storage_path, filename)
+        if not os.path.isfile(filepath):
+            continue
+        disk_files.append(filename)
+
+    unused: list[str] = []
+    for filename in disk_files:
+        if filename not in referenced:
+            unused.append(filename)
+
+    if not unused:
+        click.secho("No unused images found.", fg="green")
+        return
+
+    click.secho(f"Found {len(unused)} unused image(s).", fg="yellow")
+
+    if dry_run:
+        for filename in unused:
+            click.secho(f"  Would move: {filename}", fg="yellow")
+        return
+
+    os.makedirs(unused_dir, exist_ok=True)
+
+    moved = 0
+    skipped = 0
+    failed = 0
+    for filename in unused:
+        src = os.path.join(storage_path, filename)
+        dst = os.path.join(unused_dir, filename)
+        if os.path.exists(dst):
+            click.secho(
+                f"  Skipped (already in _unused): {filename}", fg="yellow"
+            )
+            log.warning(
+                "cleanup-group-images: skipped %s — destination already exists",
+                filename,
+            )
+            skipped += 1
+            continue
+        try:
+            shutil.move(src, dst)
+            click.secho(f"  Moved: {filename}", fg="yellow")
+            moved += 1
+        except OSError as e:
+            click.secho(f"  ERROR moving {filename}: {e}", fg="red")
+            log.error("Failed to move group image %s: %s", filename, e)
+            failed += 1
+
+    click.secho(
+        f"\nDone. {moved} moved, {skipped} skipped (already in _unused),"
+        f" {failed} failed.",
+        fg="green" if failed == 0 else "yellow",
+    )
+
+
+def _collect_referenced_group_images() -> set[str]:
+    """Return the set of image filenames referenced by all orgs and groups.
+
+    Raises an exception if the top-level list call for either orgs or groups
+    fails, so the caller can abort rather than treating all files as unused.
+    """
+    ctx = {"ignore_auth": True}
+    referenced: set[str] = set()
+
+    actions = [
+        ("organization_list", "organization_show"),
+        ("group_list", "group_show"),
+    ]
+
+    for list_action, detail_action in actions:
+        names: list[str] = tk.get_action(list_action)(ctx, {"all_fields": False})
+
+        for name in names:
+            try:
+                data = tk.get_action(detail_action)(
+                    ctx, {"id": name, "include_datasets": False}
+                )
+            except Exception as e:
+                log.warning(
+                    "Could not fetch %s for %s: %s", detail_action, name, e
+                )
+                continue
+
+            value = data.get("image_url") or ""
+            if value:
+                referenced.add(os.path.basename(value.rstrip("/")))
+
+    return referenced
