@@ -53,6 +53,16 @@ FIXED_PERSONAL_INFO = "no"
 # Fallback tag when the DGA dataset has no tags
 TAG_FALLBACK = "local government"
 
+# Fallback contact_point when neither DGA nor the DV org provides a usable one.
+# Same default ckanext-datavicmain's backfill_dd_custodian_fields uses.
+DEFAULT_CONTACT_POINT = "https://www.data.vic.gov.au/contact-us"
+
+# Fallback resource format when DGA's is blank (empty stub resources with no
+# url/mimetype to guess from). format is free text on the DV schema (preset:
+# resource_format_autocomplete, not a fixed choices list), so any string is
+# valid — "unknown" mirrors FREQUENCY_FALLBACK below.
+FORMAT_FALLBACK = "unknown"
+
 # License mapping: DGA license_id → DV license_id
 LICENSE_MAP: dict[str, str] = {
     "cc-by": "cc-by",
@@ -325,8 +335,8 @@ def _migrate_org(
     backup_run_dir: str,
     writer: csv.DictWriter,
     counters: dict,
-) -> tuple[str, str] | None:
-    """Migrate a single org (AC1). Returns the DV (org_id, org_email), or None on failure."""
+) -> tuple[str, str, str] | None:
+    """Migrate a single org (AC1). Returns the DV (org_id, org_email, org_title), or None on failure."""
     try:
         dga_org = dga.org_show(client, slug)
     except Exception as exc:
@@ -344,12 +354,13 @@ def _migrate_org(
 
     dga_id = dga_org["id"]
     dga_org_email = (dga_org.get("email") or "").strip()
+    dga_org_title = (dga_org.get("title") or "").strip()
 
     if _dv_org_exists(dga_id):
         click.secho(f"  org {slug}: already exists on DV — skipping create", fg="yellow")
         writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "skipped"))
         counters["org_skipped"] += 1
-        return dga_id, dga_org_email
+        return dga_id, dga_org_email, dga_org_title
 
     # Build org payload
     org_data: dict[str, Any] = {
@@ -370,7 +381,19 @@ def _migrate_org(
                 tmp_path = tmp.name
             dga.download_file(image_url, tmp_path, max_bytes=10 * 1024 * 1024)
             image_upload_fh = open(tmp_path, "rb")
-            org_data["image_upload"] = image_upload_fh
+            # CKAN's uploader only recognises image_upload as a real upload when
+            # it has a .filename attribute — a bare file handle is silently
+            # dropped with no error, leaving the org created without a logo.
+            image_filename = os.path.basename(urlparse(image_url).path) or f"logo{_image_suffix(image_url)}"
+            # No content_type: CKAN's verify_type() rejects any declared
+            # content_type not in ckan.upload.group.mimetypes (image/*), and
+            # DGA logo URLs don't reliably expose a trustworthy one anyway.
+            # Leaving it unset makes CKAN fall back to guessing from the
+            # filename extension, which is accurate here.
+            org_data["image_upload"] = FileStorage(
+                stream=image_upload_fh,
+                filename=image_filename,
+            )
         except Exception as exc:
             log.warning("Image download failed for %r (%s); creating org without image", slug, exc)
             org_data.pop("image_upload", None)
@@ -398,7 +421,7 @@ def _migrate_org(
     writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "created"))
     counters["org_created"] += 1
 
-    return dga_id, dga_org_email
+    return dga_id, dga_org_email, dga_org_title
 
 
 def _image_suffix(url: str) -> str:
@@ -441,6 +464,7 @@ def _build_dataset_payload(
     dga_pkg: dict,
     dv_org_id: str,
     dv_org_email: str,
+    dv_org_title: str,
     flags_out: list[str],
 ) -> dict[str, Any]:
     """Map a DGA package dict to a DV package_create payload.
@@ -466,6 +490,17 @@ def _build_dataset_payload(
     date_created = dga_pkg.get("temporal_coverage_from") or ""
     dga_name = dga_pkg.get("name") or ""
 
+    # DV requires data_owner (DATAVIC-949). DGA's author is often blank, so
+    # fall back to the org's title — same default the DD backfill_dd_custodian_fields
+    # command uses for datasets with no dedicated mapping.
+    dga_author = (dga_pkg.get("author") or "").strip()
+    if dga_author:
+        data_owner = dga_author
+    else:
+        dv_org_title = (dv_org_title or "").strip()
+        data_owner = dv_org_title or "Unknown"
+        flags_out.append("data_owner_fallback_org_title" if dv_org_title else "data_owner_fallback_unknown")
+
     dga_contact_point = (dga_pkg.get("contact_point") or "").strip()
     if _is_valid_contact_point(dga_contact_point):
         contact_point = dga_contact_point
@@ -478,6 +513,12 @@ def _build_dataset_payload(
                 flags_out.append("contact_point_not_email_org_email_used")
             else:
                 flags_out.append("contact_point_not_email_no_fallback")
+        # DV requires contact_point. Neither DGA nor the org email gave us
+        # anything usable — fall back to the generic contact page rather
+        # than leaving it empty and failing package_create validation.
+        if not contact_point:
+            contact_point = DEFAULT_CONTACT_POINT
+            flags_out.append("contact_point_default_used")
 
     return {
         "id": dga_pkg["id"],
@@ -488,7 +529,7 @@ def _build_dataset_payload(
         "tags": tags,
         "owner_org": dv_org_id,
         "license_id": dv_license,
-        "data_owner": dga_pkg.get("author") or "",
+        "data_owner": data_owner,
         "contact_point": contact_point,
         "date_created_data_asset": date_created,
         "update_frequency": dv_freq,
@@ -531,6 +572,7 @@ def _migrate_dataset(
     dga_pkg: dict,
     dv_org_id: str,
     dv_org_email: str,
+    dv_org_title: str,
     org_slug: str,
     writer: csv.DictWriter,
     counters: dict,
@@ -549,7 +591,7 @@ def _migrate_dataset(
     flags: list[str] = []
     reason: str = ""
     try:
-        payload = _build_dataset_payload(dga_pkg, dv_org_id, dv_org_email, flags)
+        payload = _build_dataset_payload(dga_pkg, dv_org_id, dv_org_email, dv_org_title, flags)
         original_name = payload["name"]
         unique_name = _next_available_package_name(original_name)
 
@@ -609,11 +651,18 @@ def _migrate_resource(
     dga_last_modified = (resource.get("last_modified") or "").strip()
     flags: list[str] = []
 
+    dga_format = (resource.get("format") or "").strip()
+    if dga_format:
+        format_value = dga_format
+    else:
+        format_value = FORMAT_FALLBACK
+        flags.append("format_fallback")
+
     base_payload: dict[str, Any] = {
         "package_id": dv_pkg_id,
         "name": res_name,
         "description": resource.get("description") or "",
-        "format": resource.get("format") or "",
+        "format": format_value,
         "release_date": (resource.get("created") or "")[:10],
         "period_start": period_start,
         "period_end": period_end,
@@ -863,7 +912,7 @@ def migrate_from_data_gov_au(
                     click.secho(f"  Skipping datasets for {slug} (org migration failed)", fg="red")
                     continue
 
-                dv_org_id, dv_org_email = org_result
+                dv_org_id, dv_org_email, dv_org_title = org_result
 
                 dataset_count = 0
                 org_packages = list(dga.iter_org_packages(client, slug))
@@ -892,6 +941,7 @@ def migrate_from_data_gov_au(
                         dga_pkg=dga_pkg,
                         dv_org_id=dv_org_id,
                         dv_org_email=dv_org_email,
+                        dv_org_title=dv_org_title,
                         org_slug=slug,
                         writer=writer,
                         counters=counters,
