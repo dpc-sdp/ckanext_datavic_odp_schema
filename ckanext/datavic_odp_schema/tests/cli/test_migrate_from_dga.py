@@ -26,6 +26,7 @@ from ckanext.datavic_odp_schema.cli.migrate_from_dga import (
     _build_tags,
     _build_dataset_payload,
     _resource_name,
+    _upload_filename,
 )
 
 
@@ -314,6 +315,24 @@ class TestResourceName:
 
     def test_falls_back_to_literal_resource_when_basename_empty(self) -> None:
         assert _resource_name({"name": "", "url": "https://example.com/"}) == "resource"
+
+
+class TestUploadFilename:
+    """_upload_filename must use the source URL's real filename (with
+    extension), never the resource's display name/title -- CKAN's
+    ckan.mimetype_guess = file_ext guesses mimetype from this filename."""
+
+    def test_uses_url_basename_even_when_name_present(self) -> None:
+        resource = {"name": "Recycling waste collection district",
+                    "url": "https://data.gov.au/data/dataset/x/resource/y/download/recycle.json"}
+        assert _upload_filename(resource) == "recycle.json"
+
+    def test_falls_back_to_resource_name_when_url_has_no_basename(self) -> None:
+        resource = {"name": "My File", "url": "https://example.com/"}
+        assert _upload_filename(resource) == "My File"
+
+    def test_falls_back_to_literal_resource_when_nothing_available(self) -> None:
+        assert _upload_filename({"name": "", "url": ""}) == "resource"
 
 
 # ---------------------------------------------------------------------------
@@ -606,6 +625,45 @@ class TestMigrateCommand:
 
         link_payload = next(c for c in created if not c["_had_upload"])
         assert link_payload["id"] == DGA_RES_LINK_ID
+
+    @pytest.mark.usefixtures("category_group")
+    def test_upload_filename_uses_url_basename_not_display_name(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """The uploaded FileStorage.filename must come from the source URL
+        (data.csv), not the resource's display name (Raw Data) -- otherwise
+        CKAN's ckan.mimetype_guess = file_ext can't guess a mimetype and the
+        resulting DV url has no file extension."""
+        import ckan.plugins.toolkit as tk
+
+        captured_filenames: list[str] = []
+        original_get_action = tk.get_action
+
+        def mock_resource_create(_context, data_dict):
+            upload = data_dict.get("upload")
+            if upload is not None:
+                captured_filenames.append(upload.filename)
+            return {"id": data_dict.get("id") or f"res-{len(captured_filenames)}",
+                    "url": data_dict.get("url", "")}
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=mock_resource_create,
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        assert captured_filenames == ["data.csv"], captured_filenames
 
     @pytest.mark.usefixtures("category_group")
     def test_org_image_uploaded_via_filestorage(

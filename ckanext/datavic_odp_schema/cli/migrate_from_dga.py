@@ -184,6 +184,20 @@ def _resource_name(resource: dict) -> str:
     return os.path.basename(urlparse(url).path) or "resource"
 
 
+def _upload_filename(resource: dict) -> str:
+    """Return a filename for the upload, taken from the source URL.
+
+    The resource's display name (used for _resource_name) is usually a human
+    title with no extension — using it as the upload filename leaves CKAN's
+    ckan.mimetype_guess = file_ext unable to guess a mimetype, and drops the
+    file extension from the resulting DV url. The actual source filename is
+    the URL's basename, so use that instead.
+    """
+    url = resource.get("url") or ""
+    basename = os.path.basename(urlparse(url).path)
+    return basename or _resource_name(resource)
+
+
 # ---------------------------------------------------------------------------
 # Helpers — CSV loading
 # ---------------------------------------------------------------------------
@@ -693,20 +707,24 @@ def _migrate_resource(
                                     res_name, writer, counters, flags)
             return
 
+        upload_filename = _upload_filename(resource)
         tmp_path: str | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=_res_suffix(res_name)) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=_res_suffix(upload_filename)) as tmp:
                 tmp_path = tmp.name
 
             dga.download_file(url, tmp_path, max_bytes=max_filesize_bytes)
 
             with open(tmp_path, "rb") as upload_fh:
                 resource_payload = dict(base_payload)
-    
+
                 # CKAN expects file uploads as FileStorage objects in the payload.
+                # filename must be the source's real filename (with extension),
+                # not res_name (the display title) -- ckan.mimetype_guess = file_ext
+                # guesses mimetype from this filename's extension.
                 resource_payload["upload"] = FileStorage(
                     stream=upload_fh,
-                    filename=res_name,
+                    filename=upload_filename,
                     content_type="application/octet-stream",
                 )
                 dv_res = tk.get_action("resource_create")(_site_context(), resource_payload)
