@@ -573,6 +573,41 @@ class TestMigrateCommand:
         assert payload["date_created_data_asset"] == "2021-01-01"
 
     @pytest.mark.usefixtures("category_group")
+    def test_resource_ids_preserved_from_dga(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """Resources must keep their DGA id, same as orgs and datasets already
+        do — otherwise a partial retry (one failed resource in an otherwise
+        successful dataset) has no way to target just the missing resource."""
+        import ckan.plugins.toolkit as tk
+
+        created: list[dict] = []
+        original_get_action = tk.get_action
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        upload_payload = next(c for c in created if c["_had_upload"])
+        assert upload_payload["id"] == DGA_RES_UPLOAD_ID
+
+        link_payload = next(c for c in created if not c["_had_upload"])
+        assert link_payload["id"] == DGA_RES_LINK_ID
+
+    @pytest.mark.usefixtures("category_group")
     def test_org_image_uploaded_via_filestorage(
         self, mock_dga, csv_path, tmp_path, app_context
     ) -> None:

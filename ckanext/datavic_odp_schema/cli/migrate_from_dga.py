@@ -671,6 +671,8 @@ def _migrate_resource(
         "period_start": period_start,
         "period_end": period_end,
     }
+    if dga_res_id:
+        base_payload["id"] = dga_res_id
     if resource.get("size"):
         base_payload["filesize"] = resource["size"]
     # Preserve DGA's last_modified so that, after harvest back to DGA, the
