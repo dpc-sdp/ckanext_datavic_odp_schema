@@ -46,6 +46,10 @@ DEFAULT_BACKUP_DIR = "/app/filestore/datagov_migration/backups"
 
 DGA_BASE_URL = dga.DGA_BASE_URL
 
+# 30s (the deployed default) exists to stay under uWSGI's 50s harakiri for web
+# uploads; that doesn't apply to this CLI process, and archive scans have taken >100s.
+CLAMAV_TIMEOUT_OVERRIDE_SECS = "150"
+
 # Fixed dataset defaults (AC2)
 FIXED_CATEGORY = "9ca71dfb-b758-4901-97ba-08cebe923158"
 FIXED_PERSONAL_INFO = "no"
@@ -844,6 +848,10 @@ def migrate_from_data_gov_au(
     click.secho("=== DataVic ← data.gov.au Council Migration ===\n", fg="cyan", bold=True)
     sys.stdout.flush()
 
+    # Raise the clamav scan timeout for this process only (see constant above).
+    original_clamav_timeout = tk.config.get("ckanext.clamav.timeout")
+    tk.config["ckanext.clamav.timeout"] = CLAMAV_TIMEOUT_OVERRIDE_SECS
+
     max_filesize_bytes = max_filesize_mb * 1024 * 1024
 
     # Load council list
@@ -955,6 +963,10 @@ def migrate_from_data_gov_au(
                 sys.stdout.flush()
     finally:
         report_fh.close()
+        if original_clamav_timeout is None:
+            tk.config.pop("ckanext.clamav.timeout", None)
+        else:
+            tk.config["ckanext.clamav.timeout"] = original_clamav_timeout
 
     # ---- Summary ------------------------------------------------------------
     click.secho("\n=== Migration complete ===", fg="cyan", bold=True)
