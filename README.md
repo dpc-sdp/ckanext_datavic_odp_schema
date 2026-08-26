@@ -20,7 +20,7 @@ Migrates Victorian local council orgs, datasets, and resources from data.gov.au 
 ckan -c $CKAN_INI datavic-odp migrate-from-data-gov-au [OPTIONS]
 
 Options:
-  --org SLUG            Org slug(s) to migrate (repeatable). Omit to migrate all 39 councils.
+  --org SLUG            Org slug(s) to migrate (repeatable). Omit to migrate all councils in vic-councils.csv.
   --max-filesize-mb N   Files larger than N MB are stored as DGA URLs (default: 100).
   --csv-path PATH       Path to council list CSV (default: /app/ckan/default/vic-councils.csv).
   --report-dir PATH     Directory for the per-run audit CSV (default: /app/filestore/datagov_migration).
