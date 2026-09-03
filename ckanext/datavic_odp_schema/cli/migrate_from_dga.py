@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import tempfile
+import uuid
 from typing import Any
 from urllib.parse import urlparse
 from werkzeug.datastructures import FileStorage
@@ -334,6 +335,19 @@ def _dv_org_exists(org_id: str) -> bool:
         return False
 
 
+def _is_uuid(value: str) -> bool:
+    """Return True if *value* is a RFC 4122 UUID.
+
+    Some data.gov.au organisations use the slug as ``id`` rather than a UUID.
+    CKAN 2.11 rejects a non-UUID ``id`` on ``organization_create``.
+    """
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return True
+
+
 def _dv_dataset_exists(dataset_id: str) -> bool:
     try:
         tk.get_action("package_show")(_site_context(), {"id": dataset_id})
@@ -373,20 +387,33 @@ def _migrate_org(
     dga_id = dga_org["id"]
     dga_org_email = (dga_org.get("email") or "").strip()
     dga_org_title = (dga_org.get("title") or "").strip()
+    dga_name = dga_org.get("name") or slug
 
+    existing_lookup = None
     if _dv_org_exists(dga_id):
-        click.secho(f"  org {slug}: already exists on DV — skipping create", fg="yellow")
-        writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "skipped"))
-        counters["org_skipped"] += 1
-        return dga_id, dga_org_email, dga_org_title
+        existing_lookup = dga_id
+    elif _dv_org_exists(dga_name):
+        existing_lookup = dga_name
 
-    # Build org payload
+    if existing_lookup:
+        existing = tk.get_action("organization_show")(
+            _site_context(), {"id": existing_lookup}
+        )
+        dv_id = existing["id"]
+        click.secho(f"  org {slug}: already exists on DV — skipping create", fg="yellow")
+        writer.writerow(_audit_row(slug, "org", dga_id, dv_id, slug, "skipped"))
+        counters["org_skipped"] += 1
+        return dv_id, dga_org_email, dga_org_title
+
+    # Build org payload. Only preserve DGA id when it is a UUID — CKAN 2.11
+    # rejects slug-style ids (seen on some newer council orgs).
     org_data: dict[str, Any] = {
-        "id": dga_id,
-        "name": dga_org["name"],
+        "name": dga_name,
         "title": dga_org.get("title", ""),
         "description": dga_org.get("description", ""),
     }
+    if _is_uuid(dga_id):
+        org_data["id"] = dga_id
 
     # Download and attach org image
     image_url = dga_org.get("image_display_url") or dga_org.get("image_url") or ""
@@ -422,7 +449,8 @@ def _migrate_org(
                     pass
 
     try:
-        tk.get_action("organization_create")(_site_context(), org_data)
+        created = tk.get_action("organization_create")(_site_context(), org_data)
+        dv_id = created["id"]
     finally:
         if image_upload_fh:
             try:
@@ -435,11 +463,11 @@ def _migrate_org(
             except Exception:
                 pass
 
-    click.secho(f"  org {slug}: created (id={dga_id})", fg="green")
-    writer.writerow(_audit_row(slug, "org", dga_id, dga_id, slug, "created"))
+    click.secho(f"  org {slug}: created (id={dv_id})", fg="green")
+    writer.writerow(_audit_row(slug, "org", dga_id, dv_id, slug, "created"))
     counters["org_created"] += 1
 
-    return dga_id, dga_org_email, dga_org_title
+    return dv_id, dga_org_email, dga_org_title
 
 
 def _image_suffix(url: str) -> str:
@@ -617,7 +645,7 @@ def _migrate_dataset(
             payload["name"] = unique_name
             flags.append("name_collision_renamed")
             reason = f"{original_name} -> {unique_name}"
-        
+
         dv_pkg = tk.get_action("package_create")(_site_context(), payload)
         dv_pkg_id = dv_pkg["id"]
     except Exception as exc:
@@ -925,7 +953,7 @@ def migrate_from_data_gov_au(
             from ckan import model
             site_user = tk.get_action("get_site_user")({"ignore_auth": True}, {})
             tk.g.userobj = model.User.get(site_user["name"])
-            
+
             for council in councils:
                 slug = council.get("Org Slug") or council.get("org_slug") or ""
                 if not slug:

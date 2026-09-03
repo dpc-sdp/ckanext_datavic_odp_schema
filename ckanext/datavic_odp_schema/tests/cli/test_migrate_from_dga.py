@@ -20,6 +20,7 @@ from ckanext.datavic_odp_schema.cli.migrate_from_dga import (
     LICENSE_FALLBACK,
     FREQUENCY_FALLBACK,
     TAG_FALLBACK,
+    _is_uuid,
     _load_councils,
     _map_frequency,
     _map_license,
@@ -344,7 +345,10 @@ class TestLoadCouncils:
     def test_loads_clean_csv(self, tmp_path) -> None:
         csv_file = tmp_path / "councils.csv"
         csv_file.write_text(
-            "Organisation,URL,Org Slug\nAlpine Shire Council,https://data.gov.au/data/organization/alpine-shire-council,alpine-shire-council\n",
+            "Organisation,URL,Org Slug\n"
+            "Alpine Shire Council,"
+            "https://data.gov.au/data/organization/alpine-shire-council,"
+            "alpine-shire-council\n",
             encoding="utf-8",
         )
         councils = _load_councils(str(csv_file))
@@ -374,8 +378,8 @@ class TestLoadCouncils:
         assert "Org Slug" in councils[0]
         assert councils[0]["Org Slug"] == "test-slug"
 
-    def test_all_39_councils_in_bundled_csv(self) -> None:
-        """Bundled CSV must have exactly 39 council rows with non-empty slugs."""
+    def test_all_councils_in_bundled_csv(self) -> None:
+        """Bundled CSV must have exactly 45 council rows with non-empty slugs."""
         # Relative path works on the host (6 levels up from tests/cli/ reaches
         # datavic_ckan_odp_lagoon/).
         bundled = os.path.normpath(os.path.join(
@@ -390,9 +394,26 @@ class TestLoadCouncils:
         if not os.path.exists(bundled):
             pytest.skip(f"Bundled CSV not found at {bundled!r}")
         councils = _load_councils(bundled)
-        assert len(councils) == 39
+        assert len(councils) == 45
         for c in councils:
             assert c.get("Org Slug"), f"Missing slug in row: {c}"
+
+
+class TestIsUuid:
+    """CKAN 2.11 only accepts a UUID when an explicit org id is supplied."""
+
+    def test_rfc4122_uuid(self) -> None:
+        assert _is_uuid("c1d6ed4f-9e96-4456-8a85-b949dba1d484") is True
+
+    def test_slug(self) -> None:
+        assert _is_uuid("kingston-city-council") is False
+
+    def test_title(self) -> None:
+        assert _is_uuid("Maroondah City Council") is False
+
+    def test_empty_and_none(self) -> None:
+        assert _is_uuid("") is False
+        assert _is_uuid(None) is False  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +611,54 @@ class TestMigrateCommand:
         assert payload["license_id"] == "cc-by"
         assert payload["contact_point"] == "floods@test.vic.gov.au"
         assert payload["date_created_data_asset"] == "2021-01-01"
+
+    @pytest.mark.usefixtures("category_group")
+    def test_non_uuid_dga_org_id_omitted_from_create(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """Some DGA orgs return a slug or title as id. CKAN 2.11 rejects those,
+        so the create payload must omit id and use the UUID CKAN generates."""
+        from click.testing import CliRunner
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+        import ckan.plugins.toolkit as tk
+
+        _, dga_org, _ = mock_dga
+        dga_org["id"] = "kingston-city-council"
+
+        generated_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        captured: dict[str, Any] = {}
+        original_get_action = tk.get_action
+
+        def mock_organization_create(context, data_dict):
+            captured["payload"] = dict(data_dict)
+            return {"id": generated_id, "name": data_dict.get("name")}
+
+        def mock_package_create(context, data_dict):
+            return {"id": data_dict.get("id"), "name": data_dict.get("name")}
+
+        with patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                organization_create=mock_organization_create,
+                package_create=mock_package_create,
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                migrate_from_data_gov_au,
+                [
+                    "--org", "test-council",
+                    "--csv-path", csv_path,
+                    "--report-dir", str(tmp_path / "reports"),
+                ],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Orgs created:       1" in result.output, result.output
+        assert "id" not in captured["payload"]
+        assert generated_id in result.output
 
     @pytest.mark.usefixtures("category_group")
     def test_resource_ids_preserved_from_dga(
