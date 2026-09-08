@@ -20,12 +20,14 @@ from ckanext.datavic_odp_schema.cli.migrate_from_dga import (
     LICENSE_FALLBACK,
     FREQUENCY_FALLBACK,
     TAG_FALLBACK,
+    _is_uuid,
     _load_councils,
     _map_frequency,
     _map_license,
     _build_tags,
     _build_dataset_payload,
     _resource_name,
+    _upload_filename,
 )
 
 
@@ -167,63 +169,110 @@ class TestBuildDatasetPayload:
                 {"key": "update_freq", "value": "monthly"},
             ]
         )
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["date_created_data_asset"] == "2019-06-01"
 
     def test_contact_point_from_email(self) -> None:
         pkg = self._dga_pkg(contact_point="contact@council.vic.gov.au")
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["contact_point"] == "contact@council.vic.gov.au"
 
     def test_contact_point_from_url(self) -> None:
         pkg = self._dga_pkg(contact_point="https://example.com/contact")
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["contact_point"] == "https://example.com/contact"
 
     def test_invalid_contact_point_falls_back_to_org_email(self) -> None:
         flags: list[str] = []
         pkg = self._dga_pkg(contact_point="not an email or url")
-        payload = _build_dataset_payload(pkg, "org-id-abc", "org@example.com", flags)
+        payload = _build_dataset_payload(pkg, "org-id-abc", "org@example.com", "Test Org Title", flags)
         assert payload["contact_point"] == "org@example.com"
         assert "contact_point_not_email_org_email_used" in flags
+
+    def test_no_contact_point_falls_back_to_default(self) -> None:
+        """DV requires contact_point. When DGA has nothing usable and the org
+        has no email either, fall back to the generic contact page rather
+        than an empty string that fails package_create validation."""
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import DEFAULT_CONTACT_POINT
+
+        flags: list[str] = []
+        pkg = self._dga_pkg(contact_point="")
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", flags)
+        assert payload["contact_point"] == DEFAULT_CONTACT_POINT
+        assert "contact_point_default_used" in flags
+
+    def test_invalid_contact_point_and_invalid_org_email_falls_back_to_default(self) -> None:
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import DEFAULT_CONTACT_POINT
+
+        flags: list[str] = []
+        pkg = self._dga_pkg(contact_point="not an email or url")
+        payload = _build_dataset_payload(pkg, "org-id-abc", "also not an email", "Test Org Title", flags)
+        assert payload["contact_point"] == DEFAULT_CONTACT_POINT
+        assert "contact_point_not_email_no_fallback" in flags
+        assert "contact_point_default_used" in flags
 
     def test_extract_truncated_to_200(self) -> None:
         long_notes = "B" * 500
         pkg = self._dga_pkg(notes=long_notes)
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["extract"] == "B" * 200
 
     def test_tag_string_joined(self) -> None:
         pkg = self._dga_pkg(tags=[{"name": "flood"}, {"name": "river"}])
         flags: list[str] = []
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", flags)
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", flags)
         assert any(t["name"] == "flood" for t in payload["tags"])
         assert any(t["name"] == "river" for t in payload["tags"])
 
     def test_tag_string_fallback_when_no_tags(self) -> None:
         flags: list[str] = []
         pkg = self._dga_pkg(tags=[])
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", flags)
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", flags)
         assert any(t["name"] == TAG_FALLBACK for t in payload["tags"])
         assert "tag_fallback" in flags
 
     def test_fixed_defaults(self) -> None:
         pkg = self._dga_pkg()
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["category"] == "9ca71dfb-b758-4901-97ba-08cebe923158"
         assert payload["personal_information"] == "no"
         assert payload["private"] is False
 
     def test_id_preserved(self) -> None:
         pkg = self._dga_pkg(id="preserved-uuid-abc")
-        payload = _build_dataset_payload(pkg, "org-id-abc", "", [])
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", [])
         assert payload["id"] == "preserved-uuid-abc"
 
     def test_license_flag_propagated(self) -> None:
         flags: list[str] = []
         pkg = self._dga_pkg(license_id="pdm")
-        _build_dataset_payload(pkg, "org-id-abc", "", flags)
+        _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", flags)
         assert "license_unmapped" in flags
+
+    def test_data_owner_from_author(self) -> None:
+        """When DGA has an author, it is used as-is and no fallback flag is set."""
+        flags: list[str] = []
+        pkg = self._dga_pkg(author="Test Author")
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Test Org Title", flags)
+        assert payload["data_owner"] == "Test Author"
+        assert not any(f.startswith("data_owner_fallback") for f in flags)
+
+    def test_data_owner_falls_back_to_org_title_when_author_missing(self) -> None:
+        """DATAVIC-949 made data_owner required; blank DGA author must fall back
+        to the DV org's title rather than an empty string that fails validation."""
+        flags: list[str] = []
+        pkg = self._dga_pkg(author="")
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "Alpine Shire Council", flags)
+        assert payload["data_owner"] == "Alpine Shire Council"
+        assert "data_owner_fallback_org_title" in flags
+
+    def test_data_owner_falls_back_to_unknown_when_no_author_or_title(self) -> None:
+        """Last-resort fallback when neither DGA author nor DV org title is available."""
+        flags: list[str] = []
+        pkg = self._dga_pkg(author="")
+        payload = _build_dataset_payload(pkg, "org-id-abc", "", "", flags)
+        assert payload["data_owner"] == "Unknown"
+        assert "data_owner_fallback_unknown" in flags
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +318,24 @@ class TestResourceName:
         assert _resource_name({"name": "", "url": "https://example.com/"}) == "resource"
 
 
+class TestUploadFilename:
+    """_upload_filename must use the source URL's real filename (with
+    extension), never the resource's display name/title -- CKAN's
+    ckan.mimetype_guess = file_ext guesses mimetype from this filename."""
+
+    def test_uses_url_basename_even_when_name_present(self) -> None:
+        resource = {"name": "Recycling waste collection district",
+                    "url": "https://data.gov.au/data/dataset/x/resource/y/download/recycle.json"}
+        assert _upload_filename(resource) == "recycle.json"
+
+    def test_falls_back_to_resource_name_when_url_has_no_basename(self) -> None:
+        resource = {"name": "My File", "url": "https://example.com/"}
+        assert _upload_filename(resource) == "My File"
+
+    def test_falls_back_to_literal_resource_when_nothing_available(self) -> None:
+        assert _upload_filename({"name": "", "url": ""}) == "resource"
+
+
 # ---------------------------------------------------------------------------
 # Unit — CSV loader
 # ---------------------------------------------------------------------------
@@ -278,7 +345,10 @@ class TestLoadCouncils:
     def test_loads_clean_csv(self, tmp_path) -> None:
         csv_file = tmp_path / "councils.csv"
         csv_file.write_text(
-            "Organisation,URL,Org Slug\nAlpine Shire Council,https://data.gov.au/data/organization/alpine-shire-council,alpine-shire-council\n",
+            "Organisation,URL,Org Slug\n"
+            "Alpine Shire Council,"
+            "https://data.gov.au/data/organization/alpine-shire-council,"
+            "alpine-shire-council\n",
             encoding="utf-8",
         )
         councils = _load_councils(str(csv_file))
@@ -308,8 +378,8 @@ class TestLoadCouncils:
         assert "Org Slug" in councils[0]
         assert councils[0]["Org Slug"] == "test-slug"
 
-    def test_all_39_councils_in_bundled_csv(self) -> None:
-        """Bundled CSV must have exactly 39 council rows with non-empty slugs."""
+    def test_all_councils_in_bundled_csv(self) -> None:
+        """Bundled CSV must have exactly 45 council rows with non-empty slugs."""
         # Relative path works on the host (6 levels up from tests/cli/ reaches
         # datavic_ckan_odp_lagoon/).
         bundled = os.path.normpath(os.path.join(
@@ -324,9 +394,26 @@ class TestLoadCouncils:
         if not os.path.exists(bundled):
             pytest.skip(f"Bundled CSV not found at {bundled!r}")
         councils = _load_councils(bundled)
-        assert len(councils) == 39
+        assert len(councils) == 45
         for c in councils:
             assert c.get("Org Slug"), f"Missing slug in row: {c}"
+
+
+class TestIsUuid:
+    """CKAN 2.11 only accepts a UUID when an explicit org id is supplied."""
+
+    def test_rfc4122_uuid(self) -> None:
+        assert _is_uuid("c1d6ed4f-9e96-4456-8a85-b949dba1d484") is True
+
+    def test_slug(self) -> None:
+        assert _is_uuid("kingston-city-council") is False
+
+    def test_title(self) -> None:
+        assert _is_uuid("Maroondah City Council") is False
+
+    def test_empty_and_none(self) -> None:
+        assert _is_uuid("") is False
+        assert _is_uuid(None) is False  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +611,269 @@ class TestMigrateCommand:
         assert payload["license_id"] == "cc-by"
         assert payload["contact_point"] == "floods@test.vic.gov.au"
         assert payload["date_created_data_asset"] == "2021-01-01"
+
+    @pytest.mark.usefixtures("category_group")
+    def test_non_uuid_dga_org_id_omitted_from_create(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """Some DGA orgs return a slug or title as id. CKAN 2.11 rejects those,
+        so the create payload must omit id and use the UUID CKAN generates."""
+        from click.testing import CliRunner
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+        import ckan.plugins.toolkit as tk
+
+        _, dga_org, _ = mock_dga
+        dga_org["id"] = "kingston-city-council"
+
+        generated_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        captured: dict[str, Any] = {}
+        original_get_action = tk.get_action
+
+        def mock_organization_create(context, data_dict):
+            captured["payload"] = dict(data_dict)
+            return {"id": generated_id, "name": data_dict.get("name")}
+
+        def mock_package_create(context, data_dict):
+            return {"id": data_dict.get("id"), "name": data_dict.get("name")}
+
+        with patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                organization_create=mock_organization_create,
+                package_create=mock_package_create,
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                migrate_from_data_gov_au,
+                [
+                    "--org", "test-council",
+                    "--csv-path", csv_path,
+                    "--report-dir", str(tmp_path / "reports"),
+                ],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Orgs created:       1" in result.output, result.output
+        assert "id" not in captured["payload"]
+        assert generated_id in result.output
+
+    @pytest.mark.usefixtures("category_group")
+    def test_resource_ids_preserved_from_dga(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """Resources must keep their DGA id, same as orgs and datasets already
+        do — otherwise a partial retry (one failed resource in an otherwise
+        successful dataset) has no way to target just the missing resource."""
+        import ckan.plugins.toolkit as tk
+
+        created: list[dict] = []
+        original_get_action = tk.get_action
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        upload_payload = next(c for c in created if c["_had_upload"])
+        assert upload_payload["id"] == DGA_RES_UPLOAD_ID
+
+        link_payload = next(c for c in created if not c["_had_upload"])
+        assert link_payload["id"] == DGA_RES_LINK_ID
+
+    @pytest.mark.usefixtures("category_group")
+    def test_upload_filename_uses_url_basename_not_display_name(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """The uploaded FileStorage.filename must come from the source URL
+        (data.csv), not the resource's display name (Raw Data) -- otherwise
+        CKAN's ckan.mimetype_guess = file_ext can't guess a mimetype and the
+        resulting DV url has no file extension."""
+        import ckan.plugins.toolkit as tk
+
+        captured_filenames: list[str] = []
+        original_get_action = tk.get_action
+
+        def mock_resource_create(_context, data_dict):
+            upload = data_dict.get("upload")
+            if upload is not None:
+                captured_filenames.append(upload.filename)
+            return {"id": data_dict.get("id") or f"res-{len(captured_filenames)}",
+                    "url": data_dict.get("url", "")}
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=mock_resource_create,
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+
+        assert captured_filenames == ["data.csv"], captured_filenames
+
+    @pytest.mark.usefixtures("category_group")
+    def test_org_image_uploaded_via_filestorage(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """Org image_upload must be a real werkzeug FileStorage with a filename
+        and no declared content_type.
+
+        A bare file handle has no .filename, so CKAN's uploader silently drops
+        it (no error, no logo). A wrong content_type (e.g.
+        application/octet-stream) makes CKAN's verify_type() reject the upload
+        outright, since DV's ckan.upload.group.mimetypes only allows
+        image/png|gif|jpeg|webp. Mocks organization_create to capture the
+        payload directly — the full upload pipeline needs Flask routing this
+        suite's minimal app_context stub doesn't provide (see the
+        last_modified tests below for the same constraint).
+        """
+        from click.testing import CliRunner
+        from werkzeug.datastructures import FileStorage
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+        import ckan.plugins.toolkit as tk
+
+        _, dga_org, _ = mock_dga
+        dga_org["image_display_url"] = "https://example.com/logo.jpg"
+
+        def fake_download(url, dest_path, max_bytes):
+            with open(dest_path, "wb") as f:
+                f.write(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
+            return 18
+
+        original_get_action = tk.get_action
+        created_orgs = {}
+
+        def mock_organization_create(context, data_dict):
+            created_orgs[data_dict.get("id")] = data_dict
+            return {"id": data_dict.get("id"), "name": data_dict.get("name")}
+
+        def mock_package_create(context, data_dict):
+            return {"id": data_dict.get("id"), "name": data_dict.get("name")}
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=fake_download,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                organization_create=mock_organization_create,
+                package_create=mock_package_create,
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                migrate_from_data_gov_au,
+                [
+                    "--org", "test-council",
+                    "--csv-path", csv_path,
+                    "--report-dir", str(tmp_path / "reports"),
+                ],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Orgs created:       1" in result.output, result.output
+
+        assert DGA_ORG_ID in created_orgs
+        image_upload = created_orgs[DGA_ORG_ID].get("image_upload")
+        assert isinstance(image_upload, FileStorage), (
+            f"expected image_upload to be a werkzeug FileStorage, got: {image_upload!r}"
+        )
+        assert image_upload.filename == "logo.jpg"
+        assert image_upload.content_type is None, (
+            "content_type must be unset so CKAN guesses it from the filename — "
+            f"got {image_upload.content_type!r}, which verify_type() would reject"
+        )
+
+    @pytest.mark.usefixtures("category_group")
+    def test_data_owner_falls_back_to_org_title_when_author_missing(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """When DGA's author is blank, data_owner must fall back to the DV org's
+        title (DATAVIC-949 made data_owner required) and the audit CSV must flag it."""
+        from click.testing import CliRunner
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import migrate_from_data_gov_au
+        from pathlib import Path
+        import ckan.plugins.toolkit as tk
+
+        _, dga_org, dga_pkg = mock_dga
+        dga_pkg["author"] = ""
+
+        def fake_download(url, dest_path, max_bytes):
+            with open(dest_path, "wb") as f:
+                f.write(b"CSV,DATA\n1,2\n")
+            return 14
+
+        created_packages = {}
+        original_get_action = tk.get_action
+
+        def mock_package_create(context, data_dict):
+            pkg_id = data_dict.get("id")
+            created_packages[pkg_id] = data_dict
+            return {"id": pkg_id, "name": data_dict.get("name")}
+
+        report_dir = tmp_path / "reports"
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=fake_download,
+        ), patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.head_size",
+            return_value=14,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=mock_package_create,
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                migrate_from_data_gov_au,
+                [
+                    "--org", "test-council",
+                    "--csv-path", csv_path,
+                    "--report-dir", str(report_dir),
+                ],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Datasets failed:    0" in result.output, result.output
+
+        payload = created_packages[DGA_PKG_ID]
+        assert payload["data_owner"] == dga_org["title"]
+
+        report_files = sorted(Path(report_dir).glob("datagov_migration_*.csv"))
+        assert len(report_files) == 1
+        with open(report_files[0]) as fh:
+            rows = list(csv.DictReader(fh))
+        dataset_row = next(r for r in rows if r["dga_id"] == DGA_PKG_ID)
+        assert "data_owner_fallback_org_title" in dataset_row["flags"]
 
     @pytest.mark.usefixtures("category_group")
     def test_second_run_skips_existing_dataset(
@@ -845,6 +1195,52 @@ class TestMigrateCommand:
         assert all("last_modified" not in p for p in patched), (
             f"unexpected last_modified patch: {patched}"
         )
+
+    @pytest.mark.usefixtures("category_group")
+    def test_blank_format_falls_back_and_is_flagged(
+        self, mock_dga, csv_path, tmp_path, app_context
+    ) -> None:
+        """DV requires resource format. Some DGA resources are empty stubs
+        (no url, no mimetype, nothing to guess from) — these must fall back
+        to FORMAT_FALLBACK rather than failing resource_create, and the audit
+        row must carry format_fallback so it's visible for review."""
+        from ckanext.datavic_odp_schema.cli.migrate_from_dga import FORMAT_FALLBACK
+        from pathlib import Path
+        import ckan.plugins.toolkit as tk
+
+        _, _, dga_pkg = mock_dga
+        link_resource = next(r for r in dga_pkg["resources"] if r["id"] == DGA_RES_LINK_ID)
+        link_resource["format"] = ""
+        link_resource["url"] = ""
+
+        created: list[dict] = []
+        report_dir = tmp_path / "reports"
+        original_get_action = tk.get_action
+
+        with patch(
+            "ckanext.datavic_odp_schema.cli.migrate_from_dga.dga.download_file",
+            side_effect=self._fake_download,
+        ), patch(
+            "ckan.plugins.toolkit.get_action",
+            side_effect=_mock_get_action(
+                original_get_action,
+                package_create=self._mock_package_create,
+                resource_create=self._make_resource_create_recorder(created),
+            ),
+        ):
+            result = self._invoke_migration(csv_path, tmp_path)
+        assert result.exit_code == 0, result.output
+        assert "Resources failed:   0" in result.output, result.output
+
+        link_payload = next(c for c in created if not c["_had_upload"])
+        assert link_payload["format"] == FORMAT_FALLBACK
+
+        report_files = sorted(Path(report_dir).glob("datagov_migration_*.csv"))
+        assert len(report_files) == 1
+        with open(report_files[0]) as fh:
+            rows = list(csv.DictReader(fh))
+        link_row = next(r for r in rows if r["dga_id"] == DGA_RES_LINK_ID)
+        assert "format_fallback" in link_row["flags"]
 
     @pytest.mark.usefixtures("category_group")
     def test_last_modified_patch_failure_flagged_in_audit(

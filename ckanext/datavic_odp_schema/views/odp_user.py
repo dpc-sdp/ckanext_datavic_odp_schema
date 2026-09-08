@@ -7,7 +7,9 @@ import ckan.plugins.toolkit as tk
 import ckan.lib.navl.dictization_functions as dictization_functions
 
 from ckan import plugins, logic, model, authz
-from ckan.views.user import RequestResetView, RegisterView, login, rotate_token
+from ckan.views.user import (
+    RequestResetView, RegisterView, login, rotate_token, regenerate_session,
+)
 
 
 log = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ class ODPRegisterView(RegisterView):
         # log the user in programatically
         userobj = model.User.get(user_dict["id"])
         if userobj:
+            regenerate_session()
             tk.login_user(userobj)
             rotate_token()
 
