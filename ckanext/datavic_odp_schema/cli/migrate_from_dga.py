@@ -95,8 +95,8 @@ FREQUENCY_MAP: dict[str, str] = {
     "biannually": "biannually",
     "biennaully": "biannually",  # DGA typo for "biennially"
     "annually": "annually",
-    "infrequently": "irregular",
-    "other": "unknown",
+    "infrequently": "asNeeded",
+    "other": "irregular",
     "never": "notPlanned",
 }
 FREQUENCY_FALLBACK = "unknown"
@@ -715,6 +715,12 @@ def _migrate_resource(
     }
     if dga_res_id:
         base_payload["id"] = dga_res_id
+    dga_mimetype = (resource.get("mimetype") or "").strip()
+    if dga_mimetype:
+        # Without this, CKAN guesses mimetype from the upload's file
+        # extension (ckan.mimetype_guess = file_ext). That guess is wrong
+        # for .geojson resources, whose real mimetype is application/json.
+        base_payload["mimetype"] = dga_mimetype
     if resource.get("size"):
         base_payload["filesize"] = resource["size"]
     # Preserve DGA's last_modified so that, after harvest back to DGA, the
