@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint
+from flask import Blueprint, current_app
 
 import ckan.lib.captcha as captcha
 import ckan.plugins.toolkit as tk
@@ -83,6 +83,14 @@ class ODPRegisterView(RegisterView):
 @odp_user.before_request
 def before_request() -> None:
     _, action = tk.get_endpoint()
+
+    # CKAN skips CSRF for extension blueprints (ignore_extensions) and for any
+    # request without a session user, except on core user.login/user.register.
+    if current_app.config["WTF_CSRF_ENABLED"]:
+        current_app.extensions["csrf"].protect()
+
+    # These pages embed a per-session CSRF token, so shared caches must not serve them.
+    tk.request.environ["__no_cache__"] = True
 
     # Skip recaptcha check if 2FA is enabled, it will be checked with ckanext-auth
     if plugins.plugin_loaded("auth") and tk.h.is_2fa_enabled() and action == "login":

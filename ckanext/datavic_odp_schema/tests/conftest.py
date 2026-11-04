@@ -52,6 +52,8 @@ class DatasetFactory(factories.Dataset):
     extract = "Test extract."
     personal_information = "no"
     update_frequency = "monthly"
+    data_owner = "Data Custodian Team"
+    contact_point = "contact@example.vic.gov.au"
 
 
 register(DatasetFactory, "dataset")
