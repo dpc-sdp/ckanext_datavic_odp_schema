@@ -110,9 +110,9 @@ class TestFrequencyMap:
             ("biannually", "biannually", ""),
             ("annually", "annually", ""),
             ("biennaully", "biannually", ""),   # DGA typo — maps to biannually
-            ("infrequently", "irregular", ""),
+            ("infrequently", "asNeeded", ""),
             ("never", "notPlanned", ""),         # schema casing: notPlanned not notplanned
-            ("other", "unknown", ""),
+            ("other", "irregular", ""),
             ("", FREQUENCY_FALLBACK, "freq_fallback"),
         ],
     )
